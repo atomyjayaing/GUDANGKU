@@ -359,6 +359,204 @@ def get_all_users():
         names = ["Admin"]
     return names
 
+def import_database(uploaded_file_bytes):
+    """Import database dari file backup .db"""
+    try:
+        # Simpan ke file temporary
+        import tempfile
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp:
+            tmp.write(uploaded_file_bytes)
+            tmp_path = tmp.name
+        
+        # Validasi file SQLite dengan membuka koneksi
+        test_conn = sqlite3.connect(tmp_path)
+        test_cursor = test_conn.cursor()
+        
+        # Cek apakah tabel-tabel yang dibutuhkan ada
+        tables = ["kardus", "inventory", "transactions", "audit_log"]
+        for tbl in tables:
+            test_cursor.execute(f"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='{tbl}'")
+            if test_cursor.fetchone()[0] == 0:
+                test_conn.close()
+                return False, f"❌ File tidak valid — tabel '{tbl}' tidak ditemukan."
+        
+        test_conn.close()
+        
+        # Backup file lama (jika ada)
+        import shutil
+        if os.path.exists(DB_PATH):
+            backup_path = DB_PATH.replace(".db", f"_old_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
+            shutil.copy(DB_PATH, backup_path)
+        
+        # Ganti dengan file baru
+        shutil.move(tmp_path, DB_PATH)
+        return True, f"✅ Database berhasil di-import! File lama tersimpan sebagai backup otomatis."
+    
+    except Exception as e:
+        return False, f"❌ Error import database: {str(e)}"
+
+def import_excel_data(excel_file_bytes, sheet_name):
+    """Import data dari Excel ke database"""
+    try:
+        import io
+        df = pd.read_excel(io.BytesIO(excel_file_bytes), sheet_name=sheet_name)
+        
+        if df.empty:
+            return False, f"❌ Sheet '{sheet_name}' kosong!"
+        
+        conn = get_conn()
+        c = conn.cursor()
+        now_str = tgl_indo()
+        inserted_count = 0
+        errors = []
+        
+        if sheet_name == "Kardus":
+            # Format: nomor_pesanan, nomor_id, owner_name, location, type
+            for idx, row in df.iterrows():
+                try:
+                    np = str(row.get("nomor_pesanan", "")).strip()
+                    ni = str(row.get("nomor_id", "")).strip()
+                    owner = str(row.get("owner_name", "")).strip()
+                    loc = str(row.get("location", "")).strip()
+                    tipe = str(row.get("type", "Milik Sendiri")).strip()
+                    
+                    if not all([np, ni, owner, loc]):
+                        errors.append(f"Baris {idx+2}: data tidak lengkap")
+                        continue
+                    
+                    label = f"{np}-{ni}-{owner}"
+                    c.execute("""
+                        INSERT INTO kardus 
+                        (label,nomor_pesanan,nomor_id,owner_name,location,type,created_at,created_by,updated_at,updated_by)
+                        VALUES (?,?,?,?,?,?,?,?,?,?)
+                    """, (label, np, ni, owner, loc, tipe, now_str, "Import Excel", now_str, "Import Excel"))
+                    inserted_count += 1
+                except Exception as e:
+                    errors.append(f"Baris {idx+2}: {str(e)}")
+        
+        elif sheet_name == "Inventory":
+            # Format: kardus_id atau label, product_name, qty, unit_price
+            for idx, row in df.iterrows():
+                try:
+                    kardus_ref = str(row.get("kardus_id", "")).strip()
+                    prod = str(row.get("product_name", "")).strip()
+                    qty = int(row.get("qty", 0)) if pd.notna(row.get("qty")) else 0
+                    harga = float(row.get("unit_price", 0)) if pd.notna(row.get("unit_price")) else 0
+                    
+                    if not prod or qty <= 0:
+                        errors.append(f"Baris {idx+2}: nama produk atau qty tidak valid")
+                        continue
+                    
+                    # Cari kardus_id dari label atau nomor
+                    kardus_id = None
+                    if kardus_ref.isdigit():
+                        kardus_id = int(kardus_ref)
+                    else:
+                        # Cari berdasarkan label
+                        kr = c.execute("SELECT id FROM kardus WHERE label=?", (kardus_ref,)).fetchone()
+                        if kr:
+                            kardus_id = kr[0]
+                    
+                    if not kardus_id:
+                        errors.append(f"Baris {idx+2}: kardus tidak ditemukan")
+                        continue
+                    
+                    c.execute("""
+                        INSERT INTO inventory (kardus_id,product_name,qty,unit_price,added_at,added_by)
+                        VALUES (?,?,?,?,?,?)
+                    """, (kardus_id, prod, qty, harga, now_str, "Import Excel"))
+                    inserted_count += 1
+                except Exception as e:
+                    errors.append(f"Baris {idx+2}: {str(e)}")
+        
+        elif sheet_name == "Transactions":
+            # Format: type, date, kardus_id, product_name, qty, price, buyer_name, performed_by
+            for idx, row in df.iterrows():
+                try:
+                    tipe = str(row.get("type", "")).strip().upper()
+                    tgl = str(row.get("date", now_str)).strip()
+                    kardus_ref = str(row.get("kardus_id", "")).strip()
+                    prod = str(row.get("product_name", "")).strip()
+                    qty = int(row.get("qty", 0)) if pd.notna(row.get("qty")) else 0
+                    price = float(row.get("price", 0)) if pd.notna(row.get("price")) else 0
+                    buyer = str(row.get("buyer_name", "")).strip()
+                    by = str(row.get("performed_by", "Import Excel")).strip()
+                    
+                    if tipe not in ["MASUK", "KELUAR", "PENJUALAN"]:
+                        errors.append(f"Baris {idx+2}: type harus MASUK, KELUAR, atau PENJUALAN")
+                        continue
+                    
+                    if not prod or qty <= 0:
+                        errors.append(f"Baris {idx+2}: produk atau qty tidak valid")
+                        continue
+                    
+                    # Cari kardus_id
+                    kardus_id = None
+                    if kardus_ref and kardus_ref.isdigit():
+                        kardus_id = int(kardus_ref)
+                    elif kardus_ref:
+                        kr = c.execute("SELECT id FROM kardus WHERE label=?", (kardus_ref,)).fetchone()
+                        if kr:
+                            kardus_id = kr[0]
+                    
+                    c.execute("""
+                        INSERT INTO transactions
+                        (type,date,kardus_id,product_name,qty,price,buyer_name,transfer_to,transfer_amount,performed_by,notes)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                    """, (tipe, tgl, kardus_id, prod, qty, price, buyer, "", 0, by, "Import Excel"))
+                    inserted_count += 1
+                except Exception as e:
+                    errors.append(f"Baris {idx+2}: {str(e)}")
+        
+        conn.commit()
+        conn.close()
+        
+        msg = f"✅ Berhasil import {inserted_count} data dari sheet '{sheet_name}'."
+        if errors:
+            msg += f"\n⚠️ Ada {len(errors)} baris yang skip:\n" + "\n".join(errors[:5])
+            if len(errors) > 5:
+                msg += f"\n... dan {len(errors)-5} error lainnya"
+        
+        return True, msg
+    
+    except Exception as e:
+        return False, f"❌ Error import Excel: {str(e)}"
+
+def generate_excel_template():
+    """Generate template Excel kosong untuk import"""
+    with pd.ExcelWriter(io.BytesIO(), engine="openpyxl") as writer:
+        # Sheet 1: Kardus
+        df_kardus = pd.DataFrame({
+            "nomor_pesanan": ["4521", "4522"],
+            "nomor_id": ["7789", "7790"],
+            "owner_name": ["Titipan Anita", "Milik Saya - Budi"],
+            "location": ["Rak A1", "Rak B2"],
+            "type": ["Titipan", "Milik Sendiri"]
+        })
+        df_kardus.to_excel(writer, sheet_name="Kardus", index=False)
+        
+        # Sheet 2: Inventory
+        df_inventory = pd.DataFrame({
+            "kardus_id": ["1", "1", "2"],
+            "product_name": ["Sabun Mandi", "Shampo", "Minyak Goreng"],
+            "qty": [10, 5, 8],
+            "unit_price": [8000, 15000, 28000]
+        })
+        df_inventory.to_excel(writer, sheet_name="Inventory", index=False)
+        
+        # Sheet 3: Transactions
+        df_transactions = pd.DataFrame({
+            "type": ["MASUK", "MASUK", "PENJUALAN"],
+            "date": ["25 Apr 2026 10:00", "25 Apr 2026 11:00", "25 Apr 2026 14:30"],
+            "kardus_id": ["1", "2", "2"],
+            "product_name": ["Sabun Mandi", "Minyak Goreng", "Minyak Goreng"],
+            "qty": [10, 8, 2],
+            "price": [0, 0, 56000],
+            "buyer_name": ["", "", "Pak Ali"],
+            "performed_by": ["Admin", "Admin", "Admin"]
+        })
+        df_transactions.to_excel(writer, sheet_name="Transactions", index=False)
+
 def get_kardus_list():
     """Ambil semua kardus beserta jumlah item."""
     conn = get_conn()
@@ -1468,6 +1666,119 @@ with tab6:
                 )
             else:
                 st.error("File database tidak ditemukan!")
+
+        st.markdown("---")
+
+        # ── Import Database ──
+        st.markdown("#### 📤 Restore Data dari Backup")
+        st.caption("Kalau aplikasi di-reset karena idle, gunakan file backup untuk restore data.")
+        
+        uploaded_backup = st.file_uploader(
+            "Pilih file backup (.db) untuk di-import",
+            type=["db"],
+            key="import_backup"
+        )
+        
+        if uploaded_backup is not None:
+            st.warning("⚠️ Perhatian! Ini akan mengganti semua data sekarang dengan data dari backup.")
+            col_imp1, col_imp2 = st.columns(2)
+            with col_imp1:
+                if st.button("✅  Ya, IMPORT SEKARANG", use_container_width=True, key="btn_import_yes"):
+                    file_bytes = uploaded_backup.read()
+                    success, message = import_database(file_bytes)
+                    if success:
+                        st.success(message)
+                        st.rerun()
+                    else:
+                        st.error(message)
+            with col_imp2:
+                st.info("❌ Batal")
+
+        st.markdown("---")
+
+        # ── Import dari Excel ──
+        st.markdown("#### 📊 Import Data dari Excel")
+        st.caption("Jika sudah punya data di Excel, bisa langsung import ke sini!")
+        
+        # Download template
+        if st.button("📋  Download Template Excel Kosong", use_container_width=True,
+                     key="btn_template_excel"):
+            try:
+                # Generate template
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                    # Sheet 1: Kardus
+                    df_kardus = pd.DataFrame({
+                        "nomor_pesanan": ["4521", "4522", ""],
+                        "nomor_id": ["7789", "7790", ""],
+                        "owner_name": ["Titipan Anita", "Milik Saya - Budi", ""],
+                        "location": ["Rak A1", "Rak B2", ""],
+                        "type": ["Titipan", "Milik Sendiri", ""]
+                    })
+                    df_kardus.to_excel(writer, sheet_name="Kardus", index=False)
+                    
+                    # Sheet 2: Inventory
+                    df_inventory = pd.DataFrame({
+                        "kardus_id": ["1", "1", "2", ""],
+                        "product_name": ["Sabun Mandi", "Shampo", "Minyak Goreng", ""],
+                        "qty": ["10", "5", "8", ""],
+                        "unit_price": ["8000", "15000", "28000", ""]
+                    })
+                    df_inventory.to_excel(writer, sheet_name="Inventory", index=False)
+                    
+                    # Sheet 3: Transactions
+                    df_transactions = pd.DataFrame({
+                        "type": ["MASUK", "MASUK", "PENJUALAN", ""],
+                        "date": ["25 Apr 2026 10:00", "25 Apr 2026 11:00", "25 Apr 2026 14:30", ""],
+                        "kardus_id": ["1", "2", "2", ""],
+                        "product_name": ["Sabun Mandi", "Minyak Goreng", "Minyak Goreng", ""],
+                        "qty": ["10", "8", "2", ""],
+                        "price": ["0", "0", "56000", ""],
+                        "buyer_name": ["", "", "Pak Ali", ""],
+                        "performed_by": ["Admin", "Admin", "Admin", ""]
+                    })
+                    df_transactions.to_excel(writer, sheet_name="Transactions", index=False)
+                
+                output.seek(0)
+                st.download_button(
+                    label="📥  Download Template.xlsx",
+                    data=output.getvalue(),
+                    file_name=f"GudangKu_Template_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            except Exception as e:
+                st.error(f"❌ Error generate template: {str(e)}")
+        
+        st.caption("💡 **Caranya:**\n1. Download template di atas\n2. Isi dengan data kamu\n3. Upload file Excel di bawah")
+        
+        # Upload Excel
+        uploaded_excel = st.file_uploader(
+            "Upload file Excel (.xlsx) dengan data kamu",
+            type=["xlsx"],
+            key="upload_excel"
+        )
+        
+        if uploaded_excel is not None:
+            st.info("📝 Pilih sheet mana yang mau diimport:")
+            sheet_choice = st.radio(
+                "Sheet yang diimport:",
+                ["Kardus", "Inventory", "Transactions"],
+                horizontal=True,
+                key="sheet_choice"
+            )
+            
+            st.warning("⚠️ Data yang diimport akan **ditambahkan** ke aplikasi, bukan mengganti.")
+            
+            if st.button(f"✅  IMPORT DATA DARI SHEET '{sheet_choice}'", use_container_width=True,
+                         key="btn_import_excel"):
+                excel_bytes = uploaded_excel.read()
+                success, message = import_excel_data(excel_bytes, sheet_choice)
+                if success:
+                    st.success(message)
+                    st.rerun()
+                else:
+                    st.error(message)
 
     with pg_col2:
         # ── Info Versi ──
