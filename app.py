@@ -15,6 +15,7 @@ from datetime import datetime, date, timedelta
 import os
 import io
 import json
+import time
 
 # ─────────────────────────────────────────────
 #  KONFIGURASI HALAMAN
@@ -170,7 +171,113 @@ hr { border-color: #e8f5e9 !important; margin: 20px 0 !important; }
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-#  KONEKSI & SETUP DATABASE
+#  LIST PRODUK ATOMY (GLOBAL DATA)
+# ─────────────────────────────────────────────
+ATOMY_PRODUCTS = [
+    "Atomy Absolute Ampoule",
+    "Atomy Absolute CellActive Skincare Set",
+    "Atomy Absolute Eye-complex",
+    "Atomy Absolute Lotion",
+    "Atomy Absolute Nutrition Cream",
+    "Atomy Absolute Serum",
+    "Atomy Absolute Toner",
+    "Atomy AC Special Set",
+    "Atomy Adelica Lip Gloss",
+    "Atomy Adelica Loose Powder",
+    "Atomy Adelica Master Fit Cushion",
+    "Atomy Aidam Cleanser",
+    "Atomy Alaska E-Omega 3",
+    "Atomy Apple Phenon",
+    "Atomy Baby Body Wash & Shampoo",
+    "Atomy Baby Care Set",
+    "Atomy Baby Lotion",
+    "Atomy BB Cream",
+    "Atomy Body Cleanser",
+    "Atomy Body Lotion",
+    "Atomy Cafe Arabica",
+    "Atomy Cafe Arabica Black",
+    "Atomy Color Food Vitamin C",
+    "Atomy Daily Expert Mask",
+    "Atomy Deep Cleanser 150ml",
+    "Atomy Dish Detergent",
+    "Atomy Evening Care 4 Set",
+    "Atomy Eye Lutein",
+    "Atomy Fabric Detergent Powder",
+    "Atomy Fabric Softener",
+    "Atomy Foam Cleanser 150ml",
+    "Atomy Gift Set Atomy",
+    "Atomy Grilled Laver",
+    "Atomy Hampers Lebaran Eksklusif",
+    "Atomy Hampers Lebaran Gold",
+    "Atomy Hampers Lebaran Silver",
+    "Atomy Hand Soap",
+    "Atomy HemoHim",
+    "Atomy HemoHim Set 4",
+    "Atomy Herbal Hair Conditioner",
+    "Atomy Herbal Hair Shampoo",
+    "Atomy Herbal Hair Tonic",
+    "Atomy Hongsamdan Red Ginseng",
+    "Atomy Hydra Brightening Care Set",
+    "Atomy Hydra Brightening Cream",
+    "Atomy Hydra Brightening Essence",
+    "Atomy Kids Chewable Omega-3",
+    "Atomy Kitchen Cloth",
+    "Atomy Lip Glow",
+    "Atomy Lip Treatment",
+    "Atomy Liquid Fabric Detergent",
+    "Atomy Marine Ampoule Gel Mask",
+    "Atomy Men Skincare Set",
+    "Atomy Mild Bubble Cleanser",
+    "Atomy Milk Thistle Rhodiola",
+    "Atomy Olive Oil Grilled Laver",
+    "Atomy Oral Care System",
+    "Atomy Organic Green Tea",
+    "Atomy Paket Berkah Ramadan A",
+    "Atomy Paket Berkah Ramadan B",
+    "Atomy Paket Berkah Ramadan C",
+    "Atomy Paket Bingkisan Lebaran",
+    "Atomy Paket Glow Up Lebaran",
+    "Atomy Paket Hampers Hari Raya",
+    "Atomy Paket Hemat Keluarga",
+    "Atomy Paket Idul Fitri Sehat",
+    "Atomy Paket Kecantikan Lebaran",
+    "Atomy Paket Lebaran A (Health Care)",
+    "Atomy Paket Lebaran B (Skincare)",
+    "Atomy Paket Lebaran C (Personal Care)",
+    "Atomy Paket Ramadhan Care",
+    "Atomy Paket Sehat Ramadhan",
+    "Atomy Paket Suplemen Lebaran",
+    "Atomy Parcel Hari Raya Idul Fitri",
+    "Atomy Parcel Lebaran Atomy",
+    "Atomy Peel Off Mask",
+    "Atomy Peeling Gel",
+    "Atomy Pomegranate Beauty",
+    "Atomy Potato Ramen",
+    "Atomy Probiotics 10+",
+    "Atomy Pure Spirulina",
+    "Atomy Pu'er Tea",
+    "Atomy Scalpcare Conditioner",
+    "Atomy Scalpcare Hair Care Set",
+    "Atomy Scalpcare Shampoo",
+    "Atomy Slim Body Shake 2.0",
+    "Atomy Stainless Steel Scrubber",
+    "Atomy Sun Stick",
+    "Atomy Sunscreen Beige",
+    "Atomy Sunscreen White",
+    "Atomy The Fame Essence",
+    "Atomy The Fame Eye Cream",
+    "Atomy The Fame Lotion",
+    "Atomy The Fame Nutrition Cream",
+    "Atomy The Fame Set",
+    "Atomy The Fame Toner",
+    "Atomy Toothbrush",
+    "Atomy Toothbrush Compact",
+    "Atomy Toothpaste 200g",
+    "Atomy Toothpaste 50g",
+    "Atomy Travel Kit",
+    "Atomy Vitamin B-Complex",
+]
+
 # ─────────────────────────────────────────────
 DB_PATH = "gudangku.db"
 
@@ -358,6 +465,101 @@ def get_all_users():
     if not names:
         names = ["Admin"]
     return names
+
+def get_filtered_products(search_text=""):
+    """Get filtered list produk Atomy berdasarkan search"""
+    if not search_text:
+        return ATOMY_PRODUCTS
+    search_lower = search_text.lower()
+    return [p for p in ATOMY_PRODUCTS if search_lower in p.lower()]
+
+def search_produk_di_kardus(product_name):
+    """Cari produk di mana saja dan tampilkan kardus yang memilikinya"""
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT 
+            i.id as inv_id,
+            i.product_name,
+            i.qty,
+            i.unit_price,
+            k.id as kardus_id,
+            k.label as kardus_label,
+            k.owner_name,
+            k.location,
+            k.type as kardus_type,
+            k.nomor_pesanan,
+            k.nomor_id
+        FROM inventory i
+        JOIN kardus k ON i.kardus_id = k.id
+        WHERE LOWER(i.product_name) LIKE LOWER(?)
+        ORDER BY k.owner_name, i.product_name
+    """, (f"%{product_name}%",)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def edit_inventory_item(inv_id, new_qty, new_price, performed_by):
+    """Edit inventory item (qty dan harga)"""
+    conn = get_conn()
+    try:
+        old_data = conn.execute("SELECT qty, unit_price FROM inventory WHERE id=?", (inv_id,)).fetchone()
+        if not old_data:
+            return False, "Item tidak ditemukan"
+        
+        conn.execute(
+            "UPDATE inventory SET qty=?, unit_price=? WHERE id=?",
+            (new_qty, new_price, inv_id)
+        )
+        conn.commit()
+        
+        # Audit
+        audit("inventory", inv_id, "UPDATE",
+              {"qty": old_data["qty"], "price": old_data["unit_price"]},
+              {"qty": new_qty, "price": new_price},
+              performed_by)
+        
+        return True, "✅ Item berhasil diupdate"
+    except Exception as e:
+        return False, f"❌ Error: {str(e)}"
+    finally:
+        conn.close()
+
+def kurangi_stok_produk(kardus_id, product_name, qty_kurangi, performed_by, notes=""):
+    """Kurangi stok produk dan catat transaksi KELUAR"""
+    conn = get_conn()
+    try:
+        # Cek stok saat ini
+        inv = conn.execute(
+            "SELECT id, qty FROM inventory WHERE kardus_id=? AND product_name=?",
+            (kardus_id, product_name)
+        ).fetchone()
+        
+        if not inv:
+            return False, f"Produk {product_name} tidak ada di kardus ini"
+        
+        if inv["qty"] < qty_kurangi:
+            return False, f"Stok tidak cukup! Stok saat ini: {inv['qty']} pcs"
+        
+        # Kurangi stok
+        new_qty = inv["qty"] - qty_kurangi
+        conn.execute(
+            "UPDATE inventory SET qty=? WHERE id=?",
+            (new_qty, inv["id"])
+        )
+        
+        # Catat transaksi KELUAR
+        now_str = tgl_indo()
+        conn.execute("""
+            INSERT INTO transactions
+            (type,date,kardus_id,product_name,qty,price,buyer_name,transfer_to,transfer_amount,performed_by,notes)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        """, ("KELUAR", now_str, kardus_id, product_name, qty_kurangi, 0, "", "", 0, performed_by, notes))
+        
+        conn.commit()
+        return True, f"✅ {qty_kurangi} pcs {product_name} berhasil diambil. Stok tersisa: {new_qty} pcs"
+    except Exception as e:
+        return False, f"❌ Error: {str(e)}"
+    finally:
+        conn.close()
 
 def import_database(uploaded_file_bytes):
     """Import database dari file backup .db"""
@@ -633,6 +835,8 @@ if "last_jual_data" not in st.session_state:
     st.session_state.last_jual_data = {}
 if "show_buat_kardus" not in st.session_state:
     st.session_state.show_buat_kardus = False
+if "multiple_produk_list" not in st.session_state:
+    st.session_state.multiple_produk_list = []  # NEW: list of {produk, qty, harga}
 
 # ─────────────────────────────────────────────
 #  HEADER APLIKASI
@@ -659,13 +863,14 @@ st.markdown("""
 # ─────────────────────────────────────────────
 #  NAVIGASI TAB UTAMA
 # ─────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "🏠 Dashboard",
     "📦 Daftar Kardus",
     "➕ Barang Masuk",
     "🛒 Jual / Ambil",
     "📊 Laporan",
     "⚙️ Pengaturan",
+    "🔍 Cari Barang",
 ])
 
 
@@ -1629,6 +1834,255 @@ with tab5:
             )
     else:
         st.info("📭 Tidak ada transaksi yang sesuai filter.")
+
+    st.markdown("---")
+
+    # ── EDIT PRODUK (Protected dengan checkbox) ──
+    with st.expander("⚙️ EDIT PRODUK (Protected - Hati-hati!)", expanded=False):
+        st.warning("⚠️ **FITUR SENSITIF** — Pastikan benar-benar mau edit sebelum submit!")
+        st.caption("Edit ini akan mengubah qty dan harga produk di gudang. Perubahan tidak bisa dibatalkan!")
+        
+        st.markdown("##### Cari Produk yang Mau Diedit")
+        
+        # Ambil semua produk dari database
+        conn = get_conn()
+        all_inventory = conn.execute("""
+            SELECT i.id, i.kardus_id, i.product_name, i.qty, i.unit_price,
+                   k.label as kardus_label, k.owner_name
+            FROM inventory i
+            JOIN kardus k ON i.kardus_id = k.id
+            ORDER BY k.owner_name, i.product_name
+        """).fetchall()
+        conn.close()
+        all_inventory = [dict(r) for r in all_inventory]
+        
+        if all_inventory:
+            # Search + filter produk
+            edit_search = st.text_input("🔍 Cari produk atau kardus:", 
+                placeholder="Contoh: HEMOHIM atau Titipan Anita", key="edit_search")
+            
+            if edit_search:
+                filtered_inv = [i for i in all_inventory if
+                    edit_search.lower() in i["product_name"].lower() or
+                    edit_search.lower() in i["kardus_label"].lower() or
+                    edit_search.lower() in i["owner_name"].lower()]
+            else:
+                filtered_inv = all_inventory
+            
+            if filtered_inv:
+                # Pilih produk
+                produk_opts = [f"{i['product_name']} | Kardus: {i['kardus_label']} | Qty: {i['qty']} pcs" 
+                               for i in filtered_inv]
+                selected_produk_edit_str = st.selectbox(
+                    "Pilih produk untuk diedit:",
+                    produk_opts,
+                    key="edit_produk_select"
+                )
+                
+                selected_edit_idx = produk_opts.index(selected_produk_edit_str)
+                selected_edit = filtered_inv[selected_edit_idx]
+                
+                # Tampilkan info saat ini
+                st.markdown(f"""
+                <div style="background:#e3f2fd; border:2px solid #1565C0; border-radius:10px; padding:16px 20px;">
+                    <b>📦 Produk Saat Ini:</b><br>
+                    🏷️ <b>{selected_edit['product_name']}</b><br>
+                    📍 Kardus: <b>{selected_edit['kardus_label']}</b><br>
+                    👤 Pemilik: <b>{selected_edit['owner_name']}</b><br>
+                    📊 Stok saat ini: <b>{selected_edit['qty']} pcs</b><br>
+                    💰 Harga saat ini: <b>Rp {int(selected_edit['unit_price']):,}</b>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown("##### Edit Data")
+                
+                edit_c1, edit_c2 = st.columns(2)
+                with edit_c1:
+                    edit_new_qty = st.number_input(
+                        "Qty baru (pcs):",
+                        min_value=0,
+                        value=selected_edit["qty"],
+                        key="edit_new_qty"
+                    )
+                with edit_c2:
+                    edit_new_price = st.number_input(
+                        "Harga satuan baru (Rp):",
+                        min_value=0,
+                        value=int(selected_edit["unit_price"]),
+                        step=500,
+                        key="edit_new_price"
+                    )
+                
+                edit_by_opt = get_all_users() + ["Ketik nama baru..."]
+                edit_by_sel = st.selectbox("Diedit Oleh:", edit_by_opt, key="edit_by_sel")
+                if edit_by_sel == "Ketik nama baru...":
+                    edit_by = st.text_input("Nama Anda:", key="edit_by_new")
+                else:
+                    edit_by = edit_by_sel
+                
+                edit_notes = st.text_area("Alasan edit:", height=60, key="edit_notes",
+                    placeholder="Contoh: Koreksi input sebelumnya, stok fisik tidak sesuai, dll")
+                
+                st.markdown("##### ✅ KONFIRMASI (Baca Sebelum Submit!)")
+                
+                # 2 checkbox konfirmasi (protective)
+                conf1 = st.checkbox(
+                    f"✅ Saya sudah yakin perubahan dari **Qty {selected_edit['qty']} → {edit_new_qty}** dan **Harga Rp {int(selected_edit['unit_price']):,} → Rp {int(edit_new_price):,}**",
+                    key="edit_conf1"
+                )
+                conf2 = st.checkbox(
+                    "✅ Saya mengerti perubahan tidak bisa dibatalkan dan audit log akan tercatat",
+                    key="edit_conf2"
+                )
+                conf3 = st.checkbox(
+                    "✅ Saya sudah input ALASAN edit di atas",
+                    key="edit_conf3"
+                )
+                
+                if st.button("🔴 SUBMIT EDIT SEKARANG", use_container_width=True, 
+                             key="btn_edit_submit", type="secondary",
+                             disabled=not (conf1 and conf2 and conf3)):
+                    
+                    if not edit_by.strip():
+                        st.error("❌ Nama pelaksana tidak boleh kosong!")
+                    elif not edit_notes.strip():
+                        st.error("❌ Alasan edit harus diisi!")
+                    else:
+                        success, message = edit_inventory_item(
+                            selected_edit["id"],
+                            edit_new_qty,
+                            edit_new_price,
+                            edit_by.strip()
+                        )
+                        
+                        if success:
+                            st.success(message)
+                            st.info(f"📝 Audit: {edit_notes}")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(message)
+            else:
+                st.info("❌ Tidak ada produk yang sesuai pencarian.")
+        else:
+            st.warning("📭 Belum ada produk di gudang.")
+
+
+# ══════════════════════════════════════════════
+#  TAB 7: CARI BARANG
+# ══════════════════════════════════════════════
+with tab7:
+    st.markdown("### 🔍 Cari Barang di Gudang")
+    st.caption("Cari produk untuk lihat kardus mana saja yang memilikinya, dan langsung kurangi stok jika diambil.")
+
+    users = get_all_users()
+
+    st.markdown("#### 🔎 Cari Produk")
+    
+    # Search input dengan autocomplete
+    search_input = st.text_input(
+        "Ketik nama produk (contoh: h → akan muncul hemohim, hongsamdan, dll)",
+        placeholder="Contoh: HEMOHIM, Atomy HemoHim, atau huruf h..."
+    )
+    
+    # Filter produk berdasarkan input
+    if search_input:
+        filtered_products = get_filtered_products(search_input)
+        
+        if filtered_products:
+            selected_produk = st.selectbox(
+                "📦 Pilih produk dari list:",
+                filtered_products,
+                key="search_produk_select"
+            )
+            
+            # Cari produk di semua kardus
+            search_results = search_produk_di_kardus(selected_produk)
+            
+            if search_results:
+                st.markdown(f"#### 📍 **{selected_produk}** ditemukan di {len(search_results)} lokasi:")
+                
+                # Tampilkan tabel hasil pencarian
+                df_search = pd.DataFrame(search_results)
+                df_display = df_search[[
+                    "kardus_label", "owner_name", "location", "kardus_type", "qty", "unit_price"
+                ]].copy()
+                df_display.columns = ["Kardus Label", "Pemilik", "📍 Lokasi", "Tipe", "Stok (pcs)", "Harga Satuan (Rp)"]
+                
+                st.dataframe(df_display, use_container_width=True, hide_index=True,
+                    column_config={
+                        "Stok (pcs)": st.column_config.NumberColumn(format="%d pcs"),
+                        "Harga Satuan (Rp)": st.column_config.NumberColumn(format="Rp %,.0f"),
+                    })
+                
+                st.markdown("---")
+                
+                # ── Ambil Barang ──
+                st.markdown("#### 📤 Ambil Barang dari Salah Satu Kardus")
+                
+                kardus_choices = [f"{r['kardus_label']} ({r['qty']} pcs)" for r in search_results]
+                selected_kardus_str = st.selectbox(
+                    "Pilih kardus mana yang mau diambil:",
+                    kardus_choices,
+                    key="search_ambil_kardus"
+                )
+                
+                selected_idx = kardus_choices.index(selected_kardus_str)
+                selected_result = search_results[selected_idx]
+                max_qty = selected_result["qty"]
+                
+                ambil_col1, ambil_col2 = st.columns(2)
+                with ambil_col1:
+                    ambil_qty = st.number_input(
+                        f"Jumlah yang diambil (maks: {max_qty} pcs):",
+                        min_value=1,
+                        max_value=max_qty,
+                        value=1,
+                        key="search_ambil_qty"
+                    )
+                
+                with ambil_col2:
+                    ambil_by_opt = users + ["Ketik nama baru..."]
+                    ambil_by_sel = st.selectbox("Dilakukan Oleh:", ambil_by_opt, key="search_ambil_by")
+                    if ambil_by_sel == "Ketik nama baru...":
+                        ambil_by = st.text_input("Nama Anda:", key="search_ambil_by_new")
+                    else:
+                        ambil_by = ambil_by_sel
+                
+                ambil_notes = st.text_area("Catatan (opsional):", height=60, key="search_ambil_notes",
+                    placeholder="Contoh: Diambil untuk display, dijual ke pelanggan, dll")
+                
+                # Konfirmasi checkbox
+                confirm_ambil = st.checkbox(
+                    f"✅ Saya yakin ambil {ambil_qty} pcs {selected_produk} dari kardus {selected_result['kardus_label']}",
+                    key="search_confirm_ambil"
+                )
+                
+                if st.button("📤 PROSES PENGAMBILAN", use_container_width=True, key="btn_search_ambil",
+                             disabled=not confirm_ambil):
+                    if not ambil_by.strip():
+                        st.error("❌ Nama pelaksana tidak boleh kosong!")
+                    else:
+                        success, message = kurangi_stok_produk(
+                            selected_result["kardus_id"],
+                            selected_produk,
+                            ambil_qty,
+                            ambil_by.strip(),
+                            ambil_notes
+                        )
+                        
+                        if success:
+                            st.success(message)
+                            st.balloons()
+                            st.rerun()
+                        else:
+                            st.error(message)
+            else:
+                st.info(f"📭 Produk {selected_produk} tidak ada di gudang.")
+        else:
+            st.warning(f"❌ Tidak ada produk yang mengandung '{search_input}'. Coba cari yang lain!")
+    else:
+        st.info("💡 **Caranya:** Ketik nama produk di atas untuk mulai mencari (bisa sebagian huruf saja)")
 
 
 # ══════════════════════════════════════════════
