@@ -1,27 +1,30 @@
 """
 ╔══════════════════════════════════════════════════╗
-║          GudangKu - Aplikasi Manajemen Gudang    ║
-║       Kelola Kardus & Penjualan dengan Mudah     ║
-║                  Versi 1.0 (2026)                ║
+║          GudangKu v2.0 - Atomy Edition           ║
+║     Database: Google Sheets (Permanent!)         ║
+║     Fitur Baru: Searchable Product, Bulk Input,  ║
+║                 Auto-merge, Excel Import         ║
 ╚══════════════════════════════════════════════════╝
-Tech Stack: Python + Streamlit + SQLite + Pandas
-Deploy: Streamlit Community Cloud (GRATIS)
 """
 
 import streamlit as st
-import sqlite3
 import pandas as pd
 from datetime import datetime, date, timedelta
 import os
 import io
 import json
 import time
+import re
+
+# Google Sheets
+import gspread
+from google.oauth2.service_account import Credentials
 
 # ─────────────────────────────────────────────
 #  KONFIGURASI HALAMAN
 # ─────────────────────────────────────────────
 st.set_page_config(
-    page_title="📦 GudangKu",
+    page_title="📦 GudangKu Atomy",
     page_icon="📦",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -32,7 +35,6 @@ st.set_page_config(
 # ─────────────────────────────────────────────
 st.markdown("""
 <style>
-/* ── Google Font ── */
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap');
 
 html, body, [class*="css"] {
@@ -40,22 +42,21 @@ html, body, [class*="css"] {
     font-size: 18px !important;
 }
 
-/* ── Heading ── */
 h1 { font-size: 34px !important; color: #2E7D32 !important; font-weight: 800 !important; }
 h2 { font-size: 26px !important; color: #1B5E20 !important; font-weight: 700 !important; }
 h3 { font-size: 22px !important; font-weight: 700 !important; }
 
-/* ── Tab navigasi besar ── */
 .stTabs [data-baseweb="tab-list"] {
     gap: 6px;
     background: #f1f8e9;
     padding: 8px;
     border-radius: 12px;
+    flex-wrap: wrap;
 }
 .stTabs [data-baseweb="tab"] {
-    font-size: 17px !important;
+    font-size: 16px !important;
     font-weight: 700 !important;
-    padding: 10px 20px !important;
+    padding: 10px 18px !important;
     border-radius: 8px !important;
     min-height: 48px !important;
 }
@@ -64,7 +65,6 @@ h3 { font-size: 22px !important; font-weight: 700 !important; }
     color: white !important;
 }
 
-/* ── Tombol besar ── */
 .stButton > button {
     font-size: 18px !important;
     font-weight: 700 !important;
@@ -78,7 +78,6 @@ h3 { font-size: 22px !important; font-weight: 700 !important; }
     box-shadow: 0 6px 16px rgba(0,0,0,0.15) !important;
 }
 
-/* ── Input besar ── */
 .stTextInput > div > div > input,
 .stNumberInput > div > div > input,
 .stTextArea textarea {
@@ -88,7 +87,6 @@ h3 { font-size: 22px !important; font-weight: 700 !important; }
     color: #111111 !important;
 }
 
-/* ── Selectbox — HANYA warna teks, jangan ubah ukuran kotak ── */
 [data-baseweb="select"] span,
 [data-baseweb="select"] div,
 [data-baseweb="select"] input {
@@ -96,7 +94,6 @@ h3 { font-size: 22px !important; font-weight: 700 !important; }
     font-size: 17px !important;
     font-family: 'Nunito', sans-serif !important;
 }
-/* Item di daftar dropdown yang terbuka */
 [data-baseweb="menu"] li,
 [data-baseweb="menu"] [role="option"] {
     font-size: 17px !important;
@@ -108,29 +105,15 @@ h3 { font-size: 22px !important; font-weight: 700 !important; }
     background-color: #e8f5e9 !important;
 }
 
-/* ── Label form ── */
-.stTextInput label, .stNumberInput label,
-.stSelectbox label, .stTextArea label,
-.stRadio label, .stDateInput label {
+.stTextInput label, .stNumberInput label, .stSelectbox label,
+.stTextArea label, .stRadio label, .stDateInput label {
     font-size: 17px !important;
     font-weight: 700 !important;
     color: #1B5E20 !important;
 }
 
-/* ── Radio button besar ── */
-.stRadio > div {
-    gap: 16px !important;
-}
-.stRadio > div > label {
-    font-size: 18px !important;
-    padding: 8px 16px !important;
-    background: #f8f8f8;
-    border-radius: 8px;
-    border: 2px solid #e0e0e0;
-    cursor: pointer;
-}
+.stRadio > div { gap: 16px !important; }
 
-/* ── Metric card besar ── */
 [data-testid="metric-container"] {
     background: white;
     border-radius: 14px;
@@ -149,2189 +132,1977 @@ h3 { font-size: 22px !important; font-weight: 700 !important; }
     color: #1B5E20 !important;
 }
 
-/* ── Dataframe ── */
-.dataframe { font-size: 16px !important; }
-
-/* ── Alert / notifikasi ── */
 .stSuccess, .stError, .stWarning, .stInfo {
-    font-size: 18px !important;
-    padding: 16px 20px !important;
+    font-size: 17px !important;
+    padding: 14px 18px !important;
     border-radius: 10px !important;
     font-weight: 600 !important;
 }
 
-/* ── Divider ── */
 hr { border-color: #e8f5e9 !important; margin: 20px 0 !important; }
-
-/* ── Scrollbar cantik ── */
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
-::-webkit-scrollbar-thumb { background: #81c784; border-radius: 4px; }
 </style>
 """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────
-#  LIST PRODUK ATOMY (GLOBAL DATA)
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════════
+#  LIST PRODUK ATOMY (102 Master List)
+# ═════════════════════════════════════════════════
 ATOMY_PRODUCTS = [
-    "Atomy Absolute Ampoule",
-    "Atomy Absolute CellActive Skincare Set",
-    "Atomy Absolute Eye-complex",
-    "Atomy Absolute Lotion",
-    "Atomy Absolute Nutrition Cream",
-    "Atomy Absolute Serum",
-    "Atomy Absolute Toner",
-    "Atomy AC Special Set",
-    "Atomy Adelica Lip Gloss",
-    "Atomy Adelica Loose Powder",
-    "Atomy Adelica Master Fit Cushion",
-    "Atomy Aidam Cleanser",
-    "Atomy Alaska E-Omega 3",
-    "Atomy Apple Phenon",
-    "Atomy Baby Body Wash & Shampoo",
-    "Atomy Baby Care Set",
-    "Atomy Baby Lotion",
-    "Atomy BB Cream",
-    "Atomy Body Cleanser",
-    "Atomy Body Lotion",
-    "Atomy Cafe Arabica",
-    "Atomy Cafe Arabica Black",
-    "Atomy Color Food Vitamin C",
-    "Atomy Daily Expert Mask",
-    "Atomy Deep Cleanser 150ml",
-    "Atomy Dish Detergent",
-    "Atomy Evening Care 4 Set",
-    "Atomy Eye Lutein",
-    "Atomy Fabric Detergent Powder",
-    "Atomy Fabric Softener",
-    "Atomy Foam Cleanser 150ml",
-    "Atomy Gift Set Atomy",
-    "Atomy Grilled Laver",
-    "Atomy Hampers Lebaran Eksklusif",
-    "Atomy Hampers Lebaran Gold",
-    "Atomy Hampers Lebaran Silver",
-    "Atomy Hand Soap",
-    "Atomy HemoHim",
-    "Atomy HemoHim Set 4",
-    "Atomy Herbal Hair Conditioner",
-    "Atomy Herbal Hair Shampoo",
-    "Atomy Herbal Hair Tonic",
-    "Atomy Hongsamdan Red Ginseng",
-    "Atomy Hydra Brightening Care Set",
-    "Atomy Hydra Brightening Cream",
-    "Atomy Hydra Brightening Essence",
-    "Atomy Kids Chewable Omega-3",
-    "Atomy Kitchen Cloth",
-    "Atomy Lip Glow",
-    "Atomy Lip Treatment",
-    "Atomy Liquid Fabric Detergent",
-    "Atomy Marine Ampoule Gel Mask",
-    "Atomy Men Skincare Set",
-    "Atomy Mild Bubble Cleanser",
-    "Atomy Milk Thistle Rhodiola",
-    "Atomy Olive Oil Grilled Laver",
-    "Atomy Oral Care System",
-    "Atomy Organic Green Tea",
-    "Atomy Paket Berkah Ramadan A",
-    "Atomy Paket Berkah Ramadan B",
-    "Atomy Paket Berkah Ramadan C",
-    "Atomy Paket Bingkisan Lebaran",
-    "Atomy Paket Glow Up Lebaran",
-    "Atomy Paket Hampers Hari Raya",
-    "Atomy Paket Hemat Keluarga",
-    "Atomy Paket Idul Fitri Sehat",
-    "Atomy Paket Kecantikan Lebaran",
-    "Atomy Paket Lebaran A (Health Care)",
-    "Atomy Paket Lebaran B (Skincare)",
-    "Atomy Paket Lebaran C (Personal Care)",
-    "Atomy Paket Ramadhan Care",
-    "Atomy Paket Sehat Ramadhan",
-    "Atomy Paket Suplemen Lebaran",
-    "Atomy Parcel Hari Raya Idul Fitri",
-    "Atomy Parcel Lebaran Atomy",
-    "Atomy Peel Off Mask",
-    "Atomy Peeling Gel",
-    "Atomy Pomegranate Beauty",
-    "Atomy Potato Ramen",
-    "Atomy Probiotics 10+",
-    "Atomy Pure Spirulina",
-    "Atomy Pu'er Tea",
-    "Atomy Scalpcare Conditioner",
-    "Atomy Scalpcare Hair Care Set",
-    "Atomy Scalpcare Shampoo",
-    "Atomy Slim Body Shake 2.0",
-    "Atomy Stainless Steel Scrubber",
-    "Atomy Sun Stick",
-    "Atomy Sunscreen Beige",
-    "Atomy Sunscreen White",
-    "Atomy The Fame Essence",
-    "Atomy The Fame Eye Cream",
-    "Atomy The Fame Lotion",
-    "Atomy The Fame Nutrition Cream",
-    "Atomy The Fame Set",
-    "Atomy The Fame Toner",
-    "Atomy Toothbrush",
-    "Atomy Toothbrush Compact",
-    "Atomy Toothpaste 200g",
-    "Atomy Toothpaste 50g",
-    "Atomy Travel Kit",
-    "Atomy Vitamin B-Complex",
+    "Atomy Absolute Ampoule", "Atomy Absolute CellActive Skincare Set",
+    "Atomy Absolute Eye-complex", "Atomy Absolute Lotion",
+    "Atomy Absolute Nutrition Cream", "Atomy Absolute Serum",
+    "Atomy Absolute Toner", "Atomy AC Special Set",
+    "Atomy Adelica Lip Gloss", "Atomy Adelica Loose Powder",
+    "Atomy Adelica Master Fit Cushion", "Atomy Aidam Cleanser",
+    "Atomy Alaska E-Omega 3", "Atomy Apple Phenon",
+    "Atomy Baby Body Wash & Shampoo", "Atomy Baby Care Set",
+    "Atomy Baby Lotion", "Atomy BB Cream",
+    "Atomy Body Cleanser", "Atomy Body Lotion",
+    "Atomy Cafe Arabica", "Atomy Cafe Arabica Black",
+    "Atomy Color Food Vitamin C", "Atomy Daily Expert Mask",
+    "Atomy Deep Cleanser 150ml", "Atomy Dish Detergent",
+    "Atomy Evening Care 4 Set", "Atomy Eye Lutein",
+    "Atomy Fabric Detergent Powder", "Atomy Fabric Softener",
+    "Atomy Foam Cleanser 150ml", "Atomy Gift Set Atomy",
+    "Atomy Grilled Laver", "Atomy Hampers Lebaran Eksklusif",
+    "Atomy Hampers Lebaran Gold", "Atomy Hampers Lebaran Silver",
+    "Atomy Hand Soap", "Atomy HemoHim",
+    "Atomy HemoHim Set 4", "Atomy Herbal Hair Conditioner",
+    "Atomy Herbal Hair Shampoo", "Atomy Herbal Hair Tonic",
+    "Atomy Hongsamdan Red Ginseng", "Atomy Hydra Brightening Care Set",
+    "Atomy Hydra Brightening Cream", "Atomy Hydra Brightening Essence",
+    "Atomy Kids Chewable Omega-3", "Atomy Kitchen Cloth",
+    "Atomy Lip Glow", "Atomy Lip Treatment",
+    "Atomy Liquid Fabric Detergent", "Atomy Marine Ampoule Gel Mask",
+    "Atomy Men Skincare Set", "Atomy Mild Bubble Cleanser",
+    "Atomy Milk Thistle Rhodiola", "Atomy Olive Oil Grilled Laver",
+    "Atomy Oral Care System", "Atomy Organic Green Tea",
+    "Atomy Paket Berkah Ramadan A", "Atomy Paket Berkah Ramadan B",
+    "Atomy Paket Berkah Ramadan C", "Atomy Paket Bingkisan Lebaran",
+    "Atomy Paket Glow Up Lebaran", "Atomy Paket Hampers Hari Raya",
+    "Atomy Paket Hemat Keluarga", "Atomy Paket Idul Fitri Sehat",
+    "Atomy Paket Kecantikan Lebaran", "Atomy Paket Lebaran A (Health Care)",
+    "Atomy Paket Lebaran B (Skincare)", "Atomy Paket Lebaran C (Personal Care)",
+    "Atomy Paket Ramadhan Care", "Atomy Paket Sehat Ramadhan",
+    "Atomy Paket Suplemen Lebaran", "Atomy Parcel Hari Raya Idul Fitri",
+    "Atomy Parcel Lebaran Atomy", "Atomy Peel Off Mask",
+    "Atomy Peeling Gel", "Atomy Pomegranate Beauty",
+    "Atomy Potato Ramen", "Atomy Probiotics 10+",
+    "Atomy Pure Spirulina", "Atomy Pu'er Tea",
+    "Atomy Scalpcare Conditioner", "Atomy Scalpcare Hair Care Set",
+    "Atomy Scalpcare Shampoo", "Atomy Slim Body Shake 2.0",
+    "Atomy Stainless Steel Scrubber", "Atomy Sun Stick",
+    "Atomy Sunscreen Beige", "Atomy Sunscreen White",
+    "Atomy The Fame Essence", "Atomy The Fame Eye Cream",
+    "Atomy The Fame Lotion", "Atomy The Fame Nutrition Cream",
+    "Atomy The Fame Set", "Atomy The Fame Toner",
+    "Atomy Toothbrush", "Atomy Toothbrush Compact",
+    "Atomy Toothpaste 200g", "Atomy Toothpaste 50g",
+    "Atomy Travel Kit", "Atomy Vitamin B-Complex",
 ]
 
-# ─────────────────────────────────────────────
-DB_PATH = "gudangku.db"
+# ═════════════════════════════════════════════════
+#  AUTO-MAPPING: nama lama → nama Atomy resmi
+#  (Berdasarkan analisis data backup user)
+# ═════════════════════════════════════════════════
+PRODUCT_MERGE_MAP = {
+    # HemoHim variants (paling banyak)
+    "HEMOHIM": "Atomy HemoHim",
+    "Hemohim": "Atomy HemoHim",
+    "hemohim": "Atomy HemoHim",
+    "HEMOHIM 1": "Atomy HemoHim",
+    "HEMOHIM 1 SET": "Atomy HemoHim Set 4",
+    
+    # Body Lotion variants
+    "BODY LOTION": "Atomy Body Lotion",
+    "BODY CARE BODY LOTION": "Atomy Body Lotion",
+    "BODYCARE BODY LOTION": "Atomy Body Lotion",
+    "EVENING CARE BODY LOTION": "Atomy Body Lotion",
+    "body care body lotion": "Atomy Body Lotion",
+    
+    # Body Cleanser
+    "BODY CLEANSER": "Atomy Body Cleanser",
+    "HERBAL BODY CLEANSER": "Atomy Body Cleanser",
+    "herbal body cleanser": "Atomy Body Cleanser",
+    
+    # Aidam
+    "BODY CARE AIDAM CLEANSER": "Atomy Aidam Cleanser",
+    
+    # Foam Cleanser
+    "FOAM CLEANSER": "Atomy Foam Cleanser 150ml",
+    "EVENING CARE FOAM CLEANSER": "Atomy Foam Cleanser 150ml",
+    "evening care foam cleanser": "Atomy Foam Cleanser 150ml",
+    
+    # Deep Cleanser
+    "DEEP CLEANSER": "Atomy Deep Cleanser 150ml",
+    "evening care deep cleanser": "Atomy Deep Cleanser 150ml",
+    
+    # Evening Care Set
+    "EVENING CARE SET": "Atomy Evening Care 4 Set",
+    "EVENING CARE 4 SET": "Atomy Evening Care 4 Set",
+    "EVENING 4 CARE SET": "Atomy Evening Care 4 Set",
+    "EVENIN G CARE SET": "Atomy Evening Care 4 Set",
+    "evening care 4 set": "Atomy Evening Care 4 Set",
+    
+    # Absolute / Cellactive
+    "ABSOLOUTE CELLACTIVE AMPOULE": "Atomy Absolute Ampoule",
+    "ABSOLUTE CEELACTIVE AMPOULE": "Atomy Absolute Ampoule",
+    "CELLACTIVE AMPOULE": "Atomy Absolute Ampoule",
+    "absolute cellactive ampoule": "Atomy Absolute Ampoule",
+    "ABSOLOUTE CELL ACTIVE SKIN": "Atomy Absolute CellActive Skincare Set",
+    "ABSOULOUTE CELLACTIVE SKIN": "Atomy Absolute CellActive Skincare Set",
+    "ATOMY ABSOLOUTE CELLACTIVE SKIN": "Atomy Absolute CellActive Skincare Set",
+    "absolute cell active": "Atomy Absolute CellActive Skincare Set",
+    "absolute snow set": "Atomy Absolute CellActive Skincare Set",
+    "A- SOLUTE SELECTIVE EYE COMPLEX": "Atomy Absolute Eye-complex",
+    "ABSOLUTE SELECTIVE LOTION": "Atomy Absolute Lotion",
+    "ABSOLUTE SELECTIVELOTION": "Atomy Absolute Lotion",
+    "a solute cellactive lotion": "Atomy Absolute Lotion",
+    "a solute selective toner": "Atomy Absolute Toner",
+    "ABSOLUTE ESSENCE SUNSCREEN": "Atomy Sunscreen White",
+    "absolute essence sunscreen": "Atomy Sunscreen White",
+    
+    # Hair products
+    "HAIR CONDITIONER": "Atomy Herbal Hair Conditioner",
+    "HERBAL HAIR CONDITIONER": "Atomy Herbal Hair Conditioner",
+    "herbal hair conditioner": "Atomy Herbal Hair Conditioner",
+    "HAIR SHAMPOO": "Atomy Herbal Hair Shampoo",
+    "HERBAL HAIR SHAMPOO": "Atomy Herbal Hair Shampoo",
+    "HERBAL SHAMPOO": "Atomy Herbal Hair Shampoo",
+    "ATOMY HERBAL HAIR SHAMPOO": "Atomy Herbal Hair Shampoo",
+    "herbal hair sampoo": "Atomy Herbal Hair Shampoo",
+    "HAIR TONIC": "Atomy Herbal Hair Tonic",
+    "SAENGMODAN HAIR TONIC": "Atomy Herbal Hair Tonic",
+    "saengmodan hair tonic": "Atomy Herbal Hair Tonic",
+    "HAIR ESSENTIAL OIL": "Atomy Herbal Hair Tonic",
+    "HAIR ESSENTIALS OIL": "Atomy Herbal Hair Tonic",
+    "ATOMY HAIR ESSENTIAL OIL": "Atomy Herbal Hair Tonic",
+    "hair essential oil": "Atomy Herbal Hair Tonic",
+    
+    # Vitamin C
+    "VIT C": "Atomy Color Food Vitamin C",
+    "VIT C 2": "Atomy Color Food Vitamin C",
+    "VITAMIN C": "Atomy Color Food Vitamin C",
+    
+    # Vitamin B
+    "VITAMIN B COMPLEX": "Atomy Vitamin B-Complex",
+    
+    # Hongsamdan
+    "HONGSAMDAN": "Atomy Hongsamdan Red Ginseng",
+    
+    # Spirulina
+    "SPIRULINA": "Atomy Pure Spirulina",
+    
+    # Sunscreen
+    "SUN SCREEN BEIGE": "Atomy Sunscreen Beige",
+    "SUNSCREEN BEIGE": "Atomy Sunscreen Beige",
+    "sunscreen beige": "Atomy Sunscreen Beige",
+    "SUNSCREEN WHITE": "Atomy Sunscreen White",
+    "sunscreen white": "Atomy Sunscreen White",
+    
+    # Toothpaste / Toothbrush
+    "ODOL BESAR": "Atomy Toothpaste 200g",
+    "odol besar": "Atomy Toothpaste 200g",
+    "ODOL KECIL": "Atomy Toothpaste 50g",
+    "ODOL KECIL 50GR": "Atomy Toothpaste 50g",
+    "Odol kecil": "Atomy Toothpaste 50g",
+    "odol kecil": "Atomy Toothpaste 50g",
+    "SIKAT GIGI": "Atomy Toothbrush",
+    "sikat gigi": "Atomy Toothbrush",
+    
+    # Coffee
+    "ARABICA 200STICK": "Atomy Cafe Arabica",
+    "KOPI ARABICA 50 STICKS": "Atomy Cafe Arabica",
+    "KOPI KECIL": "Atomy Cafe Arabica",
+    "arabica cafe 200 stik": "Atomy Cafe Arabica",
+    
+    # Hydra
+    "HYDRA BRIGHTENING CARE SET": "Atomy Hydra Brightening Care Set",
+    
+    # Healthy Glow
+    "HEALTHY GLOW BASE": "Atomy BB Cream",
+    "healthy glow base": "Atomy BB Cream",
+    
+    # Acne / Scrubber
+    "ACNE CLEAR EXPERT SYSTEM": "Atomy Stainless Steel Scrubber",
+    "acne scratch free scruber": "Atomy Stainless Steel Scrubber",
+    
+    # Baby
+    "CARABEBE LOTION": "Atomy Baby Lotion",
+    
+    # Misc to product (best guess)
+    "FINEZYME": "Atomy Probiotics 10+",  # probiotic enzyme
+    "PSYLIUM HUSK": "Atomy Slim Body Shake 2.0",
+    "KOYO": "Atomy Travel Kit",  # placeholder
+    "koyo": "Atomy Travel Kit",
+    
+    # Paket Ramadhan
+    "PAKET RAMADHAN": "Atomy Paket Ramadhan Care",
+    "PAKET RAMADHAN 1": "Atomy Paket Berkah Ramadan A",
+    "PAKET RAMDHAN 1": "Atomy Paket Berkah Ramadan A",
+    "RAMADHAN 1": "Atomy Paket Berkah Ramadan A",
+    "RAMADHAN 2": "Atomy Paket Berkah Ramadan B",
+    "RAMDHAN 1": "Atomy Paket Berkah Ramadan A",
+    "Ramadhan 1": "Atomy Paket Berkah Ramadan A",
+    "ramadhan 1": "Atomy Paket Berkah Ramadan A",
+    
+    # Lebaran
+    "LEBARAN 1": "Atomy Paket Bingkisan Lebaran",
+}
 
-def get_conn():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
+def normalize_product_name(name):
+    """Normalisasi nama produk: lookup di merge map, kalau tidak ada return as-is"""
+    if not name:
+        return name
+    name_clean = name.strip()
+    if name_clean in PRODUCT_MERGE_MAP:
+        return PRODUCT_MERGE_MAP[name_clean]
+    # Cek case-insensitive
+    for key, val in PRODUCT_MERGE_MAP.items():
+        if key.lower() == name_clean.lower():
+            return val
+    return name_clean
 
-def init_db():
-    conn = get_conn()
-    c = conn.cursor()
+# ═════════════════════════════════════════════════
+#  GOOGLE SHEETS BACKEND
+# ═════════════════════════════════════════════════
+SHEET_NAMES = {
+    "kardus": "kardus",
+    "inventory": "inventory",
+    "transactions": "transactions",
+    "audit_log": "audit_log",
+}
 
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS kardus (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            label           TEXT,
-            nomor_pesanan   TEXT,
-            nomor_id        TEXT,
-            owner_name      TEXT,
-            location        TEXT,
-            type            TEXT,
-            created_at      TEXT,
-            created_by      TEXT,
-            updated_at      TEXT,
-            updated_by      TEXT
-        )
-    """)
+KARDUS_HEADERS = ["id", "label", "nomor_pesanan", "nomor_id", "owner_name",
+                  "location", "type", "created_at", "created_by",
+                  "updated_at", "updated_by"]
+INVENTORY_HEADERS = ["id", "kardus_id", "product_name", "qty", "unit_price",
+                     "added_at", "added_by"]
+TRANSACTIONS_HEADERS = ["id", "type", "date", "kardus_id", "product_name",
+                        "qty", "price", "buyer_name", "transfer_to",
+                        "transfer_amount", "performed_by", "notes"]
+AUDIT_HEADERS = ["id", "table_name", "record_id", "action", "old_value",
+                 "new_value", "performed_by", "timestamp"]
 
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS inventory (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            kardus_id    INTEGER,
-            product_name TEXT,
-            qty          INTEGER DEFAULT 0,
-            unit_price   REAL    DEFAULT 0,
-            added_at     TEXT,
-            added_by     TEXT,
-            FOREIGN KEY (kardus_id) REFERENCES kardus(id)
-        )
-    """)
+@st.cache_resource
+def get_gspread_client():
+    """Get authenticated gspread client menggunakan secrets dari Streamlit"""
+    try:
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ]
+        # Coba dari Streamlit secrets dulu
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        else:
+            # Fallback: file lokal credentials.json
+            creds = Credentials.from_service_account_file("credentials.json", scopes=scopes)
+        client = gspread.authorize(creds)
+        return client
+    except Exception as e:
+        st.error(f"❌ Gagal koneksi Google Sheets: {e}")
+        st.info("💡 Pastikan kamu sudah setup Service Account dan upload credentials ke Streamlit Secrets.")
+        st.stop()
 
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS transactions (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            type            TEXT,
-            date            TEXT,
-            kardus_id       INTEGER,
-            product_name    TEXT,
-            qty             INTEGER,
-            price           REAL    DEFAULT 0,
-            buyer_name      TEXT,
-            transfer_to     TEXT,
-            transfer_amount REAL    DEFAULT 0,
-            performed_by    TEXT,
-            notes           TEXT
-        )
-    """)
+@st.cache_resource
+def get_spreadsheet():
+    """Get the spreadsheet by URL or name from secrets"""
+    try:
+        client = get_gspread_client()
+        if "spreadsheet_url" in st.secrets:
+            url = st.secrets["spreadsheet_url"]
+            sh = client.open_by_url(url)
+        elif "spreadsheet_name" in st.secrets:
+            sh = client.open(st.secrets["spreadsheet_name"])
+        else:
+            sh = client.open("GudangKu Database")
+        return sh
+    except gspread.SpreadsheetNotFound:
+        st.error("❌ Spreadsheet 'GudangKu Database' tidak ditemukan!")
+        st.info("💡 Buat spreadsheet baru dengan nama 'GudangKu Database' dan share ke service account email.")
+        st.stop()
+    except Exception as e:
+        st.error(f"❌ Error: {e}")
+        st.stop()
 
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS audit_log (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            table_name   TEXT,
-            record_id    INTEGER,
-            action       TEXT,
-            old_value    TEXT,
-            new_value    TEXT,
-            performed_by TEXT,
-            timestamp    TEXT
-        )
-    """)
+def get_worksheet(name):
+    """Get atau buat worksheet dengan headers yang sesuai"""
+    sh = get_spreadsheet()
+    headers_map = {
+        "kardus": KARDUS_HEADERS,
+        "inventory": INVENTORY_HEADERS,
+        "transactions": TRANSACTIONS_HEADERS,
+        "audit_log": AUDIT_HEADERS,
+    }
+    try:
+        ws = sh.worksheet(name)
+        # Pastikan header ada
+        existing_headers = ws.row_values(1)
+        expected = headers_map.get(name, [])
+        if not existing_headers or existing_headers[:len(expected)] != expected:
+            ws.clear()
+            ws.append_row(expected)
+        return ws
+    except gspread.WorksheetNotFound:
+        ws = sh.add_worksheet(title=name, rows=1000, cols=20)
+        ws.append_row(headers_map.get(name, []))
+        return ws
 
-    conn.commit()
-    conn.close()
+def init_sheets():
+    """Pastikan semua worksheet ada"""
+    for name in ["kardus", "inventory", "transactions", "audit_log"]:
+        get_worksheet(name)
 
-def _insert_sample_data(conn, c):
-    """Masukkan data contoh untuk testing."""
-    now = tgl_indo(datetime.now())
-    sample_kardus = [
-        ("4521", "7789", "Titipan Anita",        "Rak A1", "Titipan"),
-        ("4522", "7790", "Milik Saya - Budi",     "Rak B2", "Milik Sendiri"),
-        ("4523", "7791", "Titipan Sari",          "Rak C3", "Titipan"),
-        ("4524", "7792", "Milik Saya - Dewi",     "Lantai 2 Pojok", "Milik Sendiri"),
-        ("4525", "7793", "Titipan Rudi",          "Rak A5", "Titipan"),
-    ]
-    kardus_ids = []
-    for np, ni, own, loc, tipe in sample_kardus:
-        label = f"{np}-{ni}-{own}"
-        c.execute("""
-            INSERT INTO kardus (label,nomor_pesanan,nomor_id,owner_name,location,type,
-                                created_at,created_by,updated_at,updated_by)
-            VALUES (?,?,?,?,?,?,?,?,?,?)
-        """, (label, np, ni, own, loc, tipe, now, "Admin", now, "Admin"))
-        kardus_ids.append(c.lastrowid)
+# ═════════════════════════════════════════════════
+#  CRUD FUNCTIONS via Google Sheets
+# ═════════════════════════════════════════════════
 
-    # Produk contoh
-    sample_products = [
-        (kardus_ids[0], "Sabun Mandi Dove",      10, 8000),
-        (kardus_ids[0], "Shampo Pantene",         5, 15000),
-        (kardus_ids[0], "Pasta Gigi Pepsodent",  12, 12000),
-        (kardus_ids[1], "Minyak Goreng 2L",       8, 28000),
-        (kardus_ids[1], "Gula Pasir 1Kg",        15, 16000),
-        (kardus_ids[1], "Kopi Nescafe Sachet",   30, 3000),
-        (kardus_ids[1], "Teh Celup 25pcs",       10, 14000),
-        (kardus_ids[1], "Beras 5Kg",              6, 75000),
-        (kardus_ids[2], "Deterjen Rinso 800g",    7, 22000),
-        (kardus_ids[2], "Sabun Cuci Piring",      9, 9000),
-        (kardus_ids[3], "Snack Chitato",         20, 12000),
-        (kardus_ids[3], "Minuman Teh Botol",     24, 5000),
-        (kardus_ids[4], "Odol Sensodyne",         5, 35000),
-        (kardus_ids[4], "Vitamin C 1000mg",       8, 45000),
-    ]
-    for kid, pname, qty, price in sample_products:
-        c.execute("""
-            INSERT INTO inventory (kardus_id,product_name,qty,unit_price,added_at,added_by)
-            VALUES (?,?,?,?,?,?)
-        """, (kid, pname, qty, price, now, "Admin"))
+@st.cache_data(ttl=10)
+def load_table(table_name):
+    """Load semua data dari worksheet sebagai list of dicts"""
+    ws = get_worksheet(table_name)
+    records = ws.get_all_records()
+    return records
 
-    # Beberapa transaksi contoh
-    sample_tx = [
-        ("MASUK",     kardus_ids[0], "Sabun Mandi Dove",  10, 0,     "",       "",          "Admin"),
-        ("MASUK",     kardus_ids[1], "Minyak Goreng 2L",   8, 0,     "",       "",          "Admin"),
-        ("PENJUALAN", kardus_ids[1], "Gula Pasir 1Kg",     2, 32000, "Pak Ali","Milik Saya - Budi","Admin"),
-        ("KELUAR",    kardus_ids[2], "Deterjen Rinso 800g",1, 0,     "",       "Titipan Sari","Admin"),
-    ]
-    for tipe, kid, prod, qty, price, buyer, trf, perf in sample_tx:
-        c.execute("""
-            INSERT INTO transactions
-              (type,date,kardus_id,product_name,qty,price,buyer_name,
-               transfer_to,transfer_amount,performed_by,notes)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?)
-        """, (tipe, now, kid, prod, qty, price, buyer, trf, price, perf, "Data contoh"))
+def clear_cache():
+    """Clear cache supaya next load fetch fresh data"""
+    load_table.clear()
 
-    conn.commit()
+def get_next_id(table_name):
+    """Generate next ID berdasarkan max existing ID"""
+    rows = load_table(table_name)
+    if not rows:
+        return 1
+    ids = [int(r.get("id", 0) or 0) for r in rows if r.get("id")]
+    return max(ids) + 1 if ids else 1
 
-# ─────────────────────────────────────────────
+def insert_row(table_name, data):
+    """Insert satu baris ke worksheet"""
+    ws = get_worksheet(table_name)
+    headers_map = {
+        "kardus": KARDUS_HEADERS,
+        "inventory": INVENTORY_HEADERS,
+        "transactions": TRANSACTIONS_HEADERS,
+        "audit_log": AUDIT_HEADERS,
+    }
+    headers = headers_map[table_name]
+    if "id" not in data or not data.get("id"):
+        data["id"] = get_next_id(table_name)
+    row = [str(data.get(h, "")) for h in headers]
+    ws.append_row(row)
+    clear_cache()
+    return data["id"]
+
+def insert_rows_batch(table_name, data_list):
+    """Insert banyak baris sekaligus (BATCH - jauh lebih cepat)"""
+    if not data_list:
+        return []
+    ws = get_worksheet(table_name)
+    headers_map = {
+        "kardus": KARDUS_HEADERS,
+        "inventory": INVENTORY_HEADERS,
+        "transactions": TRANSACTIONS_HEADERS,
+        "audit_log": AUDIT_HEADERS,
+    }
+    headers = headers_map[table_name]
+    next_id = get_next_id(table_name)
+    rows_to_insert = []
+    inserted_ids = []
+    for d in data_list:
+        if "id" not in d or not d.get("id"):
+            d["id"] = next_id
+            next_id += 1
+        row = [str(d.get(h, "")) for h in headers]
+        rows_to_insert.append(row)
+        inserted_ids.append(d["id"])
+    ws.append_rows(rows_to_insert)
+    clear_cache()
+    return inserted_ids
+
+def update_row(table_name, row_id, updates):
+    """Update baris berdasarkan id"""
+    ws = get_worksheet(table_name)
+    all_data = ws.get_all_records()
+    headers_map = {
+        "kardus": KARDUS_HEADERS,
+        "inventory": INVENTORY_HEADERS,
+        "transactions": TRANSACTIONS_HEADERS,
+        "audit_log": AUDIT_HEADERS,
+    }
+    headers = headers_map[table_name]
+    for idx, row in enumerate(all_data):
+        if str(row.get("id")) == str(row_id):
+            row_num = idx + 2  # +2 karena header di row 1, dan idx 0-based
+            new_row = dict(row)
+            new_row.update(updates)
+            updated_values = [str(new_row.get(h, "")) for h in headers]
+            ws.update(f"A{row_num}:{chr(65+len(headers)-1)}{row_num}", [updated_values])
+            clear_cache()
+            return True
+    return False
+
+def delete_row(table_name, row_id):
+    """Hapus baris berdasarkan id"""
+    ws = get_worksheet(table_name)
+    all_data = ws.get_all_records()
+    for idx, row in enumerate(all_data):
+        if str(row.get("id")) == str(row_id):
+            row_num = idx + 2
+            ws.delete_rows(row_num)
+            clear_cache()
+            return True
+    return False
+
+def query_filter(table_name, **filters):
+    """Filter rows berdasarkan kriteria"""
+    rows = load_table(table_name)
+    result = []
+    for row in rows:
+        match = True
+        for k, v in filters.items():
+            if str(row.get(k, "")) != str(v):
+                match = False
+                break
+        if match:
+            result.append(row)
+    return result
+
+# ═════════════════════════════════════════════════
 #  HELPER FUNCTIONS
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════════
 def tgl_indo(dt=None):
-    """Format tanggal ke format Indonesia: 25 Apr 2026 14:30"""
     if dt is None:
         dt = datetime.now()
-    bulan = ["","Jan","Feb","Mar","Apr","Mei","Jun",
-             "Jul","Agu","Sep","Okt","Nov","Des"]
+    bulan = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+             "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
     return f"{dt.day:02d} {bulan[dt.month]} {dt.year} {dt.hour:02d}:{dt.minute:02d}"
 
 def tgl_indo_short(dt=None):
-    """Format tanggal pendek: 25 Apr 2026"""
     if dt is None:
         dt = datetime.now()
-    bulan = ["","Jan","Feb","Mar","Apr","Mei","Jun",
-             "Jul","Agu","Sep","Okt","Nov","Des"]
+    bulan = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+             "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
     return f"{dt.day:02d} {bulan[dt.month]} {dt.year}"
 
 def format_rupiah(angka):
-    """Format angka ke Rupiah: Rp 1.234.567"""
     try:
-        return f"Rp {int(angka):,}".replace(",", ".")
+        return f"Rp {int(float(angka)):,}".replace(",", ".")
     except:
         return "Rp 0"
 
+def parse_tgl(tgl_str):
+    try:
+        parts = str(tgl_str).strip().split(" ")
+        bulan_map = {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "Mei": 5, "Jun": 6,
+                     "Jul": 7, "Agu": 8, "Sep": 9, "Okt": 10, "Nov": 11, "Des": 12}
+        d = int(parts[0])
+        m = bulan_map.get(parts[1], 1)
+        y = int(parts[2])
+        return datetime(y, m, d)
+    except:
+        return datetime(2000, 1, 1)
+
 def audit(table, record_id, action, old_val, new_val, by):
-    """Catat ke audit_log."""
-    conn = get_conn()
-    conn.execute("""
-        INSERT INTO audit_log (table_name,record_id,action,old_value,new_value,performed_by,timestamp)
-        VALUES (?,?,?,?,?,?,?)
-    """, (table, record_id, action,
-          json.dumps(old_val, ensure_ascii=False),
-          json.dumps(new_val, ensure_ascii=False),
-          by, tgl_indo()))
-    conn.commit()
-    conn.close()
+    insert_row("audit_log", {
+        "table_name": table,
+        "record_id": record_id,
+        "action": action,
+        "old_value": json.dumps(old_val, ensure_ascii=False),
+        "new_value": json.dumps(new_val, ensure_ascii=False),
+        "performed_by": by,
+        "timestamp": tgl_indo()
+    })
 
 def get_all_users():
-    """Ambil semua nama user unik yang pernah input."""
-    conn = get_conn()
-    rows = conn.execute("""
-        SELECT DISTINCT performed_by as name FROM transactions WHERE performed_by != ''
-        UNION
-        SELECT DISTINCT created_by as name FROM kardus WHERE created_by != ''
-        ORDER BY name
-    """).fetchall()
-    conn.close()
-    names = [r["name"] for r in rows if r["name"]]
+    """Ambil nama user unik dari transactions + kardus"""
+    tx = load_table("transactions")
+    kr = load_table("kardus")
+    names = set()
+    for t in tx:
+        if t.get("performed_by"):
+            names.add(t["performed_by"])
+    for k in kr:
+        if k.get("created_by"):
+            names.add(k["created_by"])
+    names = sorted([n for n in names if n])
     if not names:
         names = ["Admin"]
     return names
 
-def get_filtered_products(search_text=""):
-    """Get filtered list produk Atomy berdasarkan search"""
-    if not search_text:
-        return ATOMY_PRODUCTS
-    search_lower = search_text.lower()
-    return [p for p in ATOMY_PRODUCTS if search_lower in p.lower()]
-
-def search_produk_di_kardus(product_name):
-    """Cari produk di mana saja dan tampilkan kardus yang memilikinya"""
-    conn = get_conn()
-    rows = conn.execute("""
-        SELECT 
-            i.id as inv_id,
-            i.product_name,
-            i.qty,
-            i.unit_price,
-            k.id as kardus_id,
-            k.label as kardus_label,
-            k.owner_name,
-            k.location,
-            k.type as kardus_type,
-            k.nomor_pesanan,
-            k.nomor_id
-        FROM inventory i
-        JOIN kardus k ON i.kardus_id = k.id
-        WHERE LOWER(i.product_name) LIKE LOWER(?)
-        ORDER BY k.owner_name, i.product_name
-    """, (f"%{product_name}%",)).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-def edit_inventory_item(inv_id, new_qty, new_price, performed_by):
-    """Edit inventory item (qty dan harga)"""
-    conn = get_conn()
-    try:
-        old_data = conn.execute("SELECT qty, unit_price FROM inventory WHERE id=?", (inv_id,)).fetchone()
-        if not old_data:
-            return False, "Item tidak ditemukan"
-        
-        conn.execute(
-            "UPDATE inventory SET qty=?, unit_price=? WHERE id=?",
-            (new_qty, new_price, inv_id)
-        )
-        conn.commit()
-        
-        # Audit
-        audit("inventory", inv_id, "UPDATE",
-              {"qty": old_data["qty"], "price": old_data["unit_price"]},
-              {"qty": new_qty, "price": new_price},
-              performed_by)
-        
-        return True, "✅ Item berhasil diupdate"
-    except Exception as e:
-        return False, f"❌ Error: {str(e)}"
-    finally:
-        conn.close()
-
-def kurangi_stok_produk(kardus_id, product_name, qty_kurangi, performed_by, notes=""):
-    """Kurangi stok produk dan catat transaksi KELUAR"""
-    conn = get_conn()
-    try:
-        # Cek stok saat ini
-        inv = conn.execute(
-            "SELECT id, qty FROM inventory WHERE kardus_id=? AND product_name=?",
-            (kardus_id, product_name)
-        ).fetchone()
-        
-        if not inv:
-            return False, f"Produk {product_name} tidak ada di kardus ini"
-        
-        if inv["qty"] < qty_kurangi:
-            return False, f"Stok tidak cukup! Stok saat ini: {inv['qty']} pcs"
-        
-        # Kurangi stok
-        new_qty = inv["qty"] - qty_kurangi
-        conn.execute(
-            "UPDATE inventory SET qty=? WHERE id=?",
-            (new_qty, inv["id"])
-        )
-        
-        # Catat transaksi KELUAR
-        now_str = tgl_indo()
-        conn.execute("""
-            INSERT INTO transactions
-            (type,date,kardus_id,product_name,qty,price,buyer_name,transfer_to,transfer_amount,performed_by,notes)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?)
-        """, ("KELUAR", now_str, kardus_id, product_name, qty_kurangi, 0, "", "", 0, performed_by, notes))
-        
-        conn.commit()
-        return True, f"✅ {qty_kurangi} pcs {product_name} berhasil diambil. Stok tersisa: {new_qty} pcs"
-    except Exception as e:
-        return False, f"❌ Error: {str(e)}"
-    finally:
-        conn.close()
-
-def import_database(uploaded_file_bytes):
-    """Import database dari file backup .db"""
-    try:
-        # Simpan ke file temporary
-        import tempfile
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp:
-            tmp.write(uploaded_file_bytes)
-            tmp_path = tmp.name
-        
-        # Validasi file SQLite dengan membuka koneksi
-        test_conn = sqlite3.connect(tmp_path)
-        test_cursor = test_conn.cursor()
-        
-        # Cek apakah tabel-tabel yang dibutuhkan ada
-        tables = ["kardus", "inventory", "transactions", "audit_log"]
-        for tbl in tables:
-            test_cursor.execute(f"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='{tbl}'")
-            if test_cursor.fetchone()[0] == 0:
-                test_conn.close()
-                return False, f"❌ File tidak valid — tabel '{tbl}' tidak ditemukan."
-        
-        test_conn.close()
-        
-        # Backup file lama (jika ada)
-        import shutil
-        if os.path.exists(DB_PATH):
-            backup_path = DB_PATH.replace(".db", f"_old_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
-            shutil.copy(DB_PATH, backup_path)
-        
-        # Ganti dengan file baru
-        shutil.move(tmp_path, DB_PATH)
-        return True, f"✅ Database berhasil di-import! File lama tersimpan sebagai backup otomatis."
-    
-    except Exception as e:
-        return False, f"❌ Error import database: {str(e)}"
-
-def import_excel_data(excel_file_bytes, sheet_name):
-    """Import data dari Excel ke database"""
-    try:
-        import io
-        df = pd.read_excel(io.BytesIO(excel_file_bytes), sheet_name=sheet_name)
-        
-        if df.empty:
-            return False, f"❌ Sheet '{sheet_name}' kosong!"
-        
-        conn = get_conn()
-        c = conn.cursor()
-        now_str = tgl_indo()
-        inserted_count = 0
-        errors = []
-        
-        if sheet_name == "Kardus":
-            # Format: nomor_pesanan, nomor_id, owner_name, location, type
-            for idx, row in df.iterrows():
-                try:
-                    np = str(row.get("nomor_pesanan", "")).strip()
-                    ni = str(row.get("nomor_id", "")).strip()
-                    owner = str(row.get("owner_name", "")).strip()
-                    loc = str(row.get("location", "")).strip()
-                    tipe = str(row.get("type", "Milik Sendiri")).strip()
-                    
-                    if not all([np, ni, owner, loc]):
-                        errors.append(f"Baris {idx+2}: data tidak lengkap")
-                        continue
-                    
-                    label = f"{np}-{ni}-{owner}"
-                    c.execute("""
-                        INSERT INTO kardus 
-                        (label,nomor_pesanan,nomor_id,owner_name,location,type,created_at,created_by,updated_at,updated_by)
-                        VALUES (?,?,?,?,?,?,?,?,?,?)
-                    """, (label, np, ni, owner, loc, tipe, now_str, "Import Excel", now_str, "Import Excel"))
-                    inserted_count += 1
-                except Exception as e:
-                    errors.append(f"Baris {idx+2}: {str(e)}")
-        
-        elif sheet_name == "Inventory":
-            # Format: kardus_id atau label, product_name, qty, unit_price
-            for idx, row in df.iterrows():
-                try:
-                    kardus_ref = str(row.get("kardus_id", "")).strip()
-                    prod = str(row.get("product_name", "")).strip()
-                    qty = int(row.get("qty", 0)) if pd.notna(row.get("qty")) else 0
-                    harga = float(row.get("unit_price", 0)) if pd.notna(row.get("unit_price")) else 0
-                    
-                    if not prod or qty <= 0:
-                        errors.append(f"Baris {idx+2}: nama produk atau qty tidak valid")
-                        continue
-                    
-                    # Cari kardus_id dari label atau nomor
-                    kardus_id = None
-                    if kardus_ref.isdigit():
-                        kardus_id = int(kardus_ref)
-                    else:
-                        # Cari berdasarkan label
-                        kr = c.execute("SELECT id FROM kardus WHERE label=?", (kardus_ref,)).fetchone()
-                        if kr:
-                            kardus_id = kr[0]
-                    
-                    if not kardus_id:
-                        errors.append(f"Baris {idx+2}: kardus tidak ditemukan")
-                        continue
-                    
-                    c.execute("""
-                        INSERT INTO inventory (kardus_id,product_name,qty,unit_price,added_at,added_by)
-                        VALUES (?,?,?,?,?,?)
-                    """, (kardus_id, prod, qty, harga, now_str, "Import Excel"))
-                    inserted_count += 1
-                except Exception as e:
-                    errors.append(f"Baris {idx+2}: {str(e)}")
-        
-        elif sheet_name == "Transactions":
-            # Format: type, date, kardus_id, product_name, qty, price, buyer_name, performed_by
-            for idx, row in df.iterrows():
-                try:
-                    tipe = str(row.get("type", "")).strip().upper()
-                    tgl = str(row.get("date", now_str)).strip()
-                    kardus_ref = str(row.get("kardus_id", "")).strip()
-                    prod = str(row.get("product_name", "")).strip()
-                    qty = int(row.get("qty", 0)) if pd.notna(row.get("qty")) else 0
-                    price = float(row.get("price", 0)) if pd.notna(row.get("price")) else 0
-                    buyer = str(row.get("buyer_name", "")).strip()
-                    by = str(row.get("performed_by", "Import Excel")).strip()
-                    
-                    if tipe not in ["MASUK", "KELUAR", "PENJUALAN"]:
-                        errors.append(f"Baris {idx+2}: type harus MASUK, KELUAR, atau PENJUALAN")
-                        continue
-                    
-                    if not prod or qty <= 0:
-                        errors.append(f"Baris {idx+2}: produk atau qty tidak valid")
-                        continue
-                    
-                    # Cari kardus_id
-                    kardus_id = None
-                    if kardus_ref and kardus_ref.isdigit():
-                        kardus_id = int(kardus_ref)
-                    elif kardus_ref:
-                        kr = c.execute("SELECT id FROM kardus WHERE label=?", (kardus_ref,)).fetchone()
-                        if kr:
-                            kardus_id = kr[0]
-                    
-                    c.execute("""
-                        INSERT INTO transactions
-                        (type,date,kardus_id,product_name,qty,price,buyer_name,transfer_to,transfer_amount,performed_by,notes)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?)
-                    """, (tipe, tgl, kardus_id, prod, qty, price, buyer, "", 0, by, "Import Excel"))
-                    inserted_count += 1
-                except Exception as e:
-                    errors.append(f"Baris {idx+2}: {str(e)}")
-        
-        conn.commit()
-        conn.close()
-        
-        msg = f"✅ Berhasil import {inserted_count} data dari sheet '{sheet_name}'."
-        if errors:
-            msg += f"\n⚠️ Ada {len(errors)} baris yang skip:\n" + "\n".join(errors[:5])
-            if len(errors) > 5:
-                msg += f"\n... dan {len(errors)-5} error lainnya"
-        
-        return True, msg
-    
-    except Exception as e:
-        return False, f"❌ Error import Excel: {str(e)}"
-
-def generate_excel_template():
-    """Generate template Excel kosong untuk import"""
-    with pd.ExcelWriter(io.BytesIO(), engine="openpyxl") as writer:
-        # Sheet 1: Kardus
-        df_kardus = pd.DataFrame({
-            "nomor_pesanan": ["4521", "4522"],
-            "nomor_id": ["7789", "7790"],
-            "owner_name": ["Titipan Anita", "Milik Saya - Budi"],
-            "location": ["Rak A1", "Rak B2"],
-            "type": ["Titipan", "Milik Sendiri"]
-        })
-        df_kardus.to_excel(writer, sheet_name="Kardus", index=False)
-        
-        # Sheet 2: Inventory
-        df_inventory = pd.DataFrame({
-            "kardus_id": ["1", "1", "2"],
-            "product_name": ["Sabun Mandi", "Shampo", "Minyak Goreng"],
-            "qty": [10, 5, 8],
-            "unit_price": [8000, 15000, 28000]
-        })
-        df_inventory.to_excel(writer, sheet_name="Inventory", index=False)
-        
-        # Sheet 3: Transactions
-        df_transactions = pd.DataFrame({
-            "type": ["MASUK", "MASUK", "PENJUALAN"],
-            "date": ["25 Apr 2026 10:00", "25 Apr 2026 11:00", "25 Apr 2026 14:30"],
-            "kardus_id": ["1", "2", "2"],
-            "product_name": ["Sabun Mandi", "Minyak Goreng", "Minyak Goreng"],
-            "qty": [10, 8, 2],
-            "price": [0, 0, 56000],
-            "buyer_name": ["", "", "Pak Ali"],
-            "performed_by": ["Admin", "Admin", "Admin"]
-        })
-        df_transactions.to_excel(writer, sheet_name="Transactions", index=False)
-
 def get_kardus_list():
-    """Ambil semua kardus beserta jumlah item."""
-    conn = get_conn()
-    rows = conn.execute("""
-        SELECT k.*, COALESCE(SUM(i.qty), 0) as total_qty
-        FROM kardus k
-        LEFT JOIN inventory i ON k.id = i.kardus_id
-        GROUP BY k.id
-        ORDER BY k.created_at DESC
-    """).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    """Get all kardus + total qty per kardus, sorted by created_at DESC (newest first)"""
+    kardus_rows = load_table("kardus")
+    inv_rows = load_table("inventory")
+    
+    qty_by_kardus = {}
+    for inv in inv_rows:
+        kid = str(inv.get("kardus_id", ""))
+        try:
+            q = int(inv.get("qty", 0) or 0)
+        except:
+            q = 0
+        qty_by_kardus[kid] = qty_by_kardus.get(kid, 0) + q
+    
+    result = []
+    for k in kardus_rows:
+        k_copy = dict(k)
+        k_copy["total_qty"] = qty_by_kardus.get(str(k.get("id", "")), 0)
+        result.append(k_copy)
+    
+    # Sort by id DESCENDING (id incremental, jadi newest first)
+    result.sort(key=lambda x: int(x.get("id", 0) or 0), reverse=True)
+    return result
 
 def get_inventory_by_kardus(kardus_id):
-    conn = get_conn()
-    rows = conn.execute("""
-        SELECT * FROM inventory WHERE kardus_id = ? ORDER BY product_name
-    """, (kardus_id,)).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    rows = query_filter("inventory", kardus_id=kardus_id)
+    rows.sort(key=lambda x: x.get("product_name", ""))
+    return rows
 
 def get_recent_transactions(limit=5):
-    conn = get_conn()
-    rows = conn.execute("""
-        SELECT t.*, k.label as kardus_label, k.owner_name
-        FROM transactions t
-        LEFT JOIN kardus k ON t.kardus_id = k.id
-        ORDER BY t.id DESC LIMIT ?
-    """, (limit,)).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    tx = load_table("transactions")
+    kr = load_table("kardus")
+    kardus_map = {str(k.get("id")): k for k in kr}
+    tx_sorted = sorted(tx, key=lambda x: int(x.get("id", 0) or 0), reverse=True)
+    result = []
+    for t in tx_sorted[:limit]:
+        t_copy = dict(t)
+        kid = str(t.get("kardus_id", ""))
+        if kid in kardus_map:
+            t_copy["kardus_label"] = kardus_map[kid].get("label", "")
+            t_copy["owner_name"] = kardus_map[kid].get("owner_name", "")
+        result.append(t_copy)
+    return result
 
 def get_dashboard_stats():
-    conn = get_conn()
     today = tgl_indo_short()
-    stats = {}
-    stats["total_kardus"] = conn.execute("SELECT COUNT(*) FROM kardus").fetchone()[0]
-    stats["total_items"]  = conn.execute("SELECT COALESCE(SUM(qty),0) FROM inventory").fetchone()[0]
+    kr = load_table("kardus")
+    inv = load_table("inventory")
+    tx = load_table("transactions")
+    
+    total_items = 0
+    for i in inv:
+        try:
+            total_items += int(i.get("qty", 0) or 0)
+        except:
+            pass
+    
+    penjualan_today = 0
+    masuk_today = 0
+    for t in tx:
+        date_str = str(t.get("date", ""))
+        if today in date_str:
+            if t.get("type") == "PENJUALAN":
+                try:
+                    penjualan_today += float(t.get("price", 0) or 0)
+                except:
+                    pass
+            elif t.get("type") == "MASUK":
+                try:
+                    masuk_today += int(t.get("qty", 0) or 0)
+                except:
+                    pass
+    
+    return {
+        "total_kardus": len(kr),
+        "total_items": total_items,
+        "penjualan_hari_ini": penjualan_today,
+        "masuk_hari_ini": masuk_today,
+    }
 
-    r = conn.execute(
-        "SELECT COALESCE(SUM(price),0) FROM transactions WHERE type='PENJUALAN' AND date LIKE ?",
-        (f"%{today}%",)
-    ).fetchone()[0]
-    stats["penjualan_hari_ini"] = r
+def search_produk_di_kardus(product_name):
+    """Cari produk di semua kardus"""
+    inv = load_table("inventory")
+    kr = load_table("kardus")
+    kardus_map = {str(k.get("id")): k for k in kr}
+    
+    pname_lower = product_name.lower()
+    result = []
+    for i in inv:
+        if pname_lower in str(i.get("product_name", "")).lower():
+            try:
+                qty = int(i.get("qty", 0) or 0)
+            except:
+                qty = 0
+            if qty <= 0:
+                continue
+            kid = str(i.get("kardus_id", ""))
+            if kid in kardus_map:
+                k = kardus_map[kid]
+                result.append({
+                    "inv_id": i.get("id"),
+                    "product_name": i.get("product_name"),
+                    "qty": qty,
+                    "unit_price": float(i.get("unit_price", 0) or 0),
+                    "kardus_id": kid,
+                    "kardus_label": k.get("label", ""),
+                    "owner_name": k.get("owner_name", ""),
+                    "location": k.get("location", ""),
+                    "kardus_type": k.get("type", ""),
+                })
+    return result
 
-    r2 = conn.execute(
-        "SELECT COALESCE(SUM(qty),0) FROM transactions WHERE type='MASUK' AND date LIKE ?",
-        (f"%{today}%",)
-    ).fetchone()[0]
-    stats["masuk_hari_ini"] = r2
-    conn.close()
-    return stats
+def get_filtered_products(search_text=""):
+    """Filter list produk Atomy"""
+    if not search_text:
+        return ATOMY_PRODUCTS
+    s = search_text.lower()
+    return [p for p in ATOMY_PRODUCTS if s in p.lower()]
 
+def kurangi_stok(kardus_id, product_name, qty_kurangi, performed_by, tipe="KELUAR",
+                 buyer="", price=0, transfer_to="", notes=""):
+    """Kurangi stok dan catat transaksi"""
+    inv_rows = load_table("inventory")
+    target_inv = None
+    for i in inv_rows:
+        if (str(i.get("kardus_id")) == str(kardus_id) and
+            str(i.get("product_name")) == str(product_name)):
+            target_inv = i
+            break
+    
+    if not target_inv:
+        return False, f"Produk '{product_name}' tidak ditemukan di kardus ini"
+    
+    current_qty = int(target_inv.get("qty", 0) or 0)
+    if current_qty < qty_kurangi:
+        return False, f"Stok tidak cukup! Stok saat ini: {current_qty} pcs"
+    
+    new_qty = current_qty - qty_kurangi
+    update_row("inventory", target_inv.get("id"), {"qty": new_qty})
+    
+    # Catat transaksi
+    insert_row("transactions", {
+        "type": tipe,
+        "date": tgl_indo(),
+        "kardus_id": kardus_id,
+        "product_name": product_name,
+        "qty": qty_kurangi,
+        "price": price,
+        "buyer_name": buyer,
+        "transfer_to": transfer_to,
+        "transfer_amount": price if tipe == "PENJUALAN" else 0,
+        "performed_by": performed_by,
+        "notes": notes
+    })
+    
+    return True, f"✅ Berhasil! Stok tersisa: {new_qty} pcs"
 
-# ─────────────────────────────────────────────
-#  INIT DATABASE (jalankan sekali)
-# ─────────────────────────────────────────────
-init_db()
+def edit_inventory_item(inv_id, new_qty, new_price, performed_by, notes=""):
+    """Edit qty & harga inventory"""
+    inv_rows = load_table("inventory")
+    target = None
+    for i in inv_rows:
+        if str(i.get("id")) == str(inv_id):
+            target = i
+            break
+    if not target:
+        return False, "Item tidak ditemukan"
+    
+    old = {"qty": target.get("qty"), "price": target.get("unit_price")}
+    update_row("inventory", inv_id, {"qty": new_qty, "unit_price": new_price})
+    audit("inventory", inv_id, "UPDATE", old,
+          {"qty": new_qty, "price": new_price, "notes": notes}, performed_by)
+    return True, "✅ Berhasil diupdate"
 
-# ─────────────────────────────────────────────
-#  SESSION STATE
-# ─────────────────────────────────────────────
-if "active_tab" not in st.session_state:
-    st.session_state.active_tab = 0
-if "selected_kardus_id" not in st.session_state:
-    st.session_state.selected_kardus_id = None
-if "show_detail_kardus" not in st.session_state:
-    st.session_state.show_detail_kardus = False
-if "konfirmasi_jual" not in st.session_state:
-    st.session_state.konfirmasi_jual = False
-if "konfirmasi_ambil" not in st.session_state:
-    st.session_state.konfirmasi_ambil = False
-if "last_jual_data" not in st.session_state:
-    st.session_state.last_jual_data = {}
-if "show_buat_kardus" not in st.session_state:
-    st.session_state.show_buat_kardus = False
-if "multiple_produk_list" not in st.session_state:
-    st.session_state.multiple_produk_list = []  # NEW: list of {produk, qty, harga}
+# ═════════════════════════════════════════════════
+#  IMPORT BACKUP DARI SQLite (.db) → Google Sheets
+# ═════════════════════════════════════════════════
+def import_sqlite_backup(uploaded_bytes, normalize=True, performed_by="Admin"):
+    """Import data dari .db SQLite backup ke Google Sheets, dengan auto-normalize nama produk"""
+    import sqlite3
+    import tempfile
+    
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp:
+            tmp.write(uploaded_bytes)
+            tmp_path = tmp.name
+        
+        conn = sqlite3.connect(tmp_path)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        
+        # Validasi
+        for tbl in ["kardus", "inventory", "transactions"]:
+            c.execute(f"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='{tbl}'")
+            if c.fetchone()[0] == 0:
+                conn.close()
+                return False, f"Tabel '{tbl}' tidak ada di backup"
+        
+        # Bersihkan worksheets dulu
+        for name in ["kardus", "inventory", "transactions", "audit_log"]:
+            ws = get_worksheet(name)
+            ws.clear()
+            headers_map = {
+                "kardus": KARDUS_HEADERS,
+                "inventory": INVENTORY_HEADERS,
+                "transactions": TRANSACTIONS_HEADERS,
+                "audit_log": AUDIT_HEADERS,
+            }
+            ws.append_row(headers_map[name])
+        
+        # Migrate kardus
+        kardus_rows = c.execute("SELECT * FROM kardus").fetchall()
+        kardus_data = []
+        for k in kardus_rows:
+            kardus_data.append({
+                "id": k["id"],
+                "label": k["label"],
+                "nomor_pesanan": k["nomor_pesanan"],
+                "nomor_id": k["nomor_id"],
+                "owner_name": k["owner_name"],
+                "location": k["location"],
+                "type": k["type"],
+                "created_at": k["created_at"],
+                "created_by": k["created_by"],
+                "updated_at": k["updated_at"],
+                "updated_by": k["updated_by"],
+            })
+        if kardus_data:
+            insert_rows_batch("kardus", kardus_data)
+        
+        # Migrate inventory dengan auto-normalize
+        inv_rows = c.execute("SELECT * FROM inventory").fetchall()
+        inv_data = []
+        normalized_count = 0
+        for i in inv_rows:
+            original_name = i["product_name"]
+            name = normalize_product_name(original_name) if normalize else original_name
+            if name != original_name:
+                normalized_count += 1
+            inv_data.append({
+                "id": i["id"],
+                "kardus_id": i["kardus_id"],
+                "product_name": name,
+                "qty": i["qty"],
+                "unit_price": i["unit_price"],
+                "added_at": i["added_at"],
+                "added_by": i["added_by"],
+            })
+        if inv_data:
+            insert_rows_batch("inventory", inv_data)
+        
+        # Migrate transactions dengan auto-normalize
+        tx_rows = c.execute("SELECT * FROM transactions").fetchall()
+        tx_data = []
+        for t in tx_rows:
+            original_name = t["product_name"]
+            name = normalize_product_name(original_name) if normalize else original_name
+            tx_data.append({
+                "id": t["id"],
+                "type": t["type"],
+                "date": t["date"],
+                "kardus_id": t["kardus_id"],
+                "product_name": name,
+                "qty": t["qty"],
+                "price": t["price"],
+                "buyer_name": t["buyer_name"],
+                "transfer_to": t["transfer_to"],
+                "transfer_amount": t["transfer_amount"],
+                "performed_by": t["performed_by"],
+                "notes": t["notes"],
+            })
+        if tx_data:
+            insert_rows_batch("transactions", tx_data)
+        
+        conn.close()
+        os.unlink(tmp_path)
+        
+        return True, (f"✅ Migrasi selesai!\n"
+                      f"- Kardus: {len(kardus_data)} baris\n"
+                      f"- Inventory: {len(inv_data)} baris ({normalized_count} produk dinormalisasi)\n"
+                      f"- Transactions: {len(tx_data)} baris")
+    except Exception as e:
+        return False, f"❌ Error: {str(e)}"
 
-# ─────────────────────────────────────────────
-#  HEADER APLIKASI
-# ─────────────────────────────────────────────
+def merge_duplicate_products(performed_by="Admin"):
+    """Merge produk yang sebenarnya sama tapi nama berbeda → consolidate inventory"""
+    inv_rows = load_table("inventory")
+    
+    # Group by (kardus_id, normalized_name)
+    groups = {}
+    for i in inv_rows:
+        kid = str(i.get("kardus_id"))
+        original_name = i.get("product_name", "")
+        normalized = normalize_product_name(original_name)
+        key = (kid, normalized)
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(i)
+    
+    merge_count = 0
+    rename_count = 0
+    
+    for (kid, normalized), items in groups.items():
+        if len(items) > 1:
+            # Multiple items perlu di-merge jadi 1
+            total_qty = sum(int(it.get("qty", 0) or 0) for it in items)
+            # Ambil unit_price dari yang paling besar
+            unit_price = max(float(it.get("unit_price", 0) or 0) for it in items)
+            
+            # Update item pertama
+            first_item = items[0]
+            update_row("inventory", first_item["id"], {
+                "product_name": normalized,
+                "qty": total_qty,
+                "unit_price": unit_price,
+            })
+            
+            # Hapus sisa
+            for it in items[1:]:
+                delete_row("inventory", it["id"])
+                merge_count += 1
+        elif len(items) == 1:
+            # Single item, cukup rename kalau perlu
+            it = items[0]
+            if it.get("product_name") != normalized:
+                update_row("inventory", it["id"], {"product_name": normalized})
+                rename_count += 1
+    
+    # Normalize semua transaksi juga
+    tx_rows = load_table("transactions")
+    tx_renamed = 0
+    for t in tx_rows:
+        original = t.get("product_name", "")
+        normalized = normalize_product_name(original)
+        if normalized != original:
+            update_row("transactions", t["id"], {"product_name": normalized})
+            tx_renamed += 1
+    
+    audit("inventory", 0, "MERGE",
+          {}, {"merged": merge_count, "renamed": rename_count, "tx_renamed": tx_renamed},
+          performed_by)
+    
+    return merge_count, rename_count, tx_renamed
+
+# ═════════════════════════════════════════════════
+#  HEADER & INIT
+# ═════════════════════════════════════════════════
+init_sheets()
+
+# Session state
+for key, default in [
+    ("active_tab", 0),
+    ("show_buat_kardus", False),
+    ("show_detail_kardus", False),
+    ("konfirmasi_jual", False),
+    ("konfirmasi_ambil", False),
+    ("last_jual_data", {}),
+    ("last_ambil_data", {}),
+    ("bulk_produk_list", []),  # list of {product_name, qty, unit_price}
+]:
+    if key not in st.session_state:
+        st.session_state[key] = default
+
 st.markdown("""
 <div style="
     background: linear-gradient(135deg, #2E7D32 0%, #388E3C 50%, #43A047 100%);
-    padding: 24px 32px;
-    border-radius: 16px;
-    margin-bottom: 24px;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    box-shadow: 0 4px 20px rgba(46,125,50,0.3);
-">
+    padding: 24px 32px; border-radius: 16px; margin-bottom: 24px;
+    display: flex; align-items: center; gap: 16px;
+    box-shadow: 0 4px 20px rgba(46,125,50,0.3);">
     <div style="font-size:52px">📦</div>
     <div>
-        <div style="color:white; font-size:36px; font-weight:800; letter-spacing:-0.5px">GudangKu</div>
-        <div style="color:#c8e6c9; font-size:18px; font-weight:600">Kelola Kardus &amp; Penjualan dengan Mudah</div>
+        <div style="color:white; font-size:34px; font-weight:800;">GudangKu Atomy</div>
+        <div style="color:#c8e6c9; font-size:17px; font-weight:600">
+            Kelola Kardus & Penjualan • Database Permanen di Google Sheets
+        </div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────
-#  NAVIGASI TAB UTAMA
-# ─────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tabs = st.tabs([
     "🏠 Dashboard",
     "📦 Daftar Kardus",
     "➕ Barang Masuk",
     "🛒 Jual / Ambil",
+    "🔍 Cari Barang",
     "📊 Laporan",
     "⚙️ Pengaturan",
-    "🔍 Cari Barang",
 ])
+tab_dashboard, tab_kardus, tab_masuk, tab_jual, tab_cari, tab_laporan, tab_setting = tabs
 
-
-# ══════════════════════════════════════════════
-#  TAB 1: DASHBOARD
-# ══════════════════════════════════════════════
-with tab1:
+# ════════════════════════════════════════════════════
+#  TAB: DASHBOARD
+# ════════════════════════════════════════════════════
+with tab_dashboard:
     stats = get_dashboard_stats()
-
+    
     st.markdown("### 📊 Ringkasan Hari Ini")
-    st.caption("Lihat semua info penting gudang kamu dalam satu tampilan.")
-
-    # ── 4 Kartu Metrik ──
+    st.caption("Lihat semua info penting gudang dalam satu tampilan.")
+    
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.metric("📦 Total Kardus", f"{stats['total_kardus']}")
     with c2:
-        st.metric("🗃️ Total Item di Gudang", f"{stats['total_items']:,} pcs")
+        st.metric("🗃️ Total Item", f"{stats['total_items']:,} pcs")
     with c3:
         st.metric("💰 Penjualan Hari Ini", format_rupiah(stats["penjualan_hari_ini"]))
     with c4:
-        st.metric("📥 Barang Masuk Hari Ini", f"{stats['masuk_hari_ini']} pcs")
-
+        st.metric("📥 Masuk Hari Ini", f"{stats['masuk_hari_ini']} pcs")
+    
     st.markdown("---")
-
-    # ── 2 Tombol Super Besar ──
-    st.markdown("### ⚡ Aksi Cepat")
-    col_a, col_b = st.columns(2)
-
-    with col_a:
-        st.markdown("""
-        <style>
-        div[data-testid="column"]:nth-of-type(1) .stButton > button {
-            background: linear-gradient(135deg, #2E7D32, #43A047) !important;
-            color: white !important;
-            font-size: 22px !important;
-            min-height: 80px !important;
-            border: none !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-        if st.button("🟢  BARANG MASUK\n\n➕ Tambah stok ke gudang", use_container_width=True):
-            st.info("👆 Silakan klik tab **➕ Barang Masuk** di atas untuk menambah barang!")
-
-    with col_b:
-        st.markdown("""
-        <style>
-        div[data-testid="column"]:nth-of-type(2) .stButton > button {
-            background: linear-gradient(135deg, #1565C0, #1976D2) !important;
-            color: white !important;
-            font-size: 22px !important;
-            min-height: 80px !important;
-            border: none !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-        if st.button("🔵  JUAL / AMBIL BARANG\n\n🛒 Proses penjualan atau pengambilan", use_container_width=True):
-            st.info("👆 Silakan klik tab **🛒 Jual / Ambil** di atas untuk memproses penjualan!")
-
-    st.markdown("---")
-
-    # ── 5 Transaksi Terbaru ──
     st.markdown("### 🕐 5 Transaksi Terakhir")
+    
     recent = get_recent_transactions(5)
-
     if recent:
-        df_recent = pd.DataFrame(recent)
+        df = pd.DataFrame(recent)
         cols_show = ["date", "type", "kardus_label", "product_name", "qty", "price", "performed_by"]
-        cols_show = [c for c in cols_show if c in df_recent.columns]
-        df_recent = df_recent[cols_show].copy()
-        df_recent.columns = ["Tanggal", "Tipe", "Kardus", "Produk", "Qty", "Harga (Rp)", "Dilakukan Oleh"][:len(cols_show)]
-
-        def warna_tipe(val):
-            if val == "MASUK":
-                return "color: #2E7D32; font-weight:700"
-            elif val == "PENJUALAN":
-                return "color: #1565C0; font-weight:700"
-            else:
-                return "color: #E65100; font-weight:700"
-
-        styled = df_recent.style.map(warna_tipe, subset=["Tipe"])
-        st.dataframe(styled, use_container_width=True, hide_index=True)
+        cols_show = [c for c in cols_show if c in df.columns]
+        df = df[cols_show].copy()
+        df.columns = ["Tanggal", "Tipe", "Kardus", "Produk", "Qty", "Harga (Rp)", "Oleh"][:len(cols_show)]
+        st.dataframe(df, use_container_width=True, hide_index=True)
     else:
-        st.info("📭 Belum ada transaksi. Mulai dengan menambah barang masuk!")
+        st.info("📭 Belum ada transaksi.")
 
-    st.markdown("---")
-    st.caption("💡 Untuk laporan lengkap, klik tab **📊 Laporan** di atas.")
-
-
-# ══════════════════════════════════════════════
-#  TAB 2: DAFTAR KARDUS
-# ══════════════════════════════════════════════
-with tab2:
+# ════════════════════════════════════════════════════
+#  TAB: DAFTAR KARDUS
+# ════════════════════════════════════════════════════
+with tab_kardus:
     st.markdown("### 📦 Daftar Semua Kardus")
-    st.caption("Semua kardus yang ada di gudang ditampilkan di sini.")
-
-    # ── Tombol Buat Kardus Baru ──
-    col_btn, col_space = st.columns([1, 2])
+    st.caption("Kardus terbaru ditampilkan paling atas. 🆕 = dibuat dalam 1 jam terakhir.")
+    
+    col_btn, _ = st.columns([1, 2])
     with col_btn:
         if st.button("➕  Buat Kardus Baru", use_container_width=True):
             st.session_state.show_buat_kardus = not st.session_state.show_buat_kardus
-
-    # ── Form Buat Kardus Baru ──
-    if st.session_state.get("show_buat_kardus", False):
-        with st.container():
-            st.markdown("---")
-            st.markdown("#### 📝 Form Buat Kardus Baru")
-
-            users = get_all_users()
-
-            bk_col1, bk_col2 = st.columns(2)
-            with bk_col1:
-                bk_nomor_pesanan = st.text_input("Nomor Pesanan (4 digit)", max_chars=4,
-                    placeholder="Contoh: 4526", key="bk_nopesanan")
-                bk_nomor_id = st.text_input("Nomor ID Driver (4 digit)", max_chars=4,
-                    placeholder="Contoh: 7794", key="bk_noid")
-                bk_owner = st.text_input("Nama Pemilik Kardus",
-                    placeholder="Contoh: Titipan Anita / Milik Saya - Budi", key="bk_owner")
-            with bk_col2:
-                bk_location = st.text_input("Lokasi Kardus",
-                    placeholder="Contoh: Rak A3, Lantai 2", key="bk_loc")
-                bk_type = st.radio("Tipe Kardus", ["Titipan", "Milik Sendiri"], key="bk_type",
-                    horizontal=True)
-                bk_by_opt = users + ["Ketik nama baru..."]
-                bk_by_sel = st.selectbox("Dibuat Oleh", bk_by_opt, key="bk_by_sel")
-                if bk_by_sel == "Ketik nama baru...":
-                    bk_by = st.text_input("Nama Anda:", key="bk_by_new")
+    
+    # Form Buat Kardus Baru
+    if st.session_state.show_buat_kardus:
+        st.markdown("---")
+        st.markdown("#### 📝 Form Buat Kardus Baru")
+        users = get_all_users()
+        c1, c2 = st.columns(2)
+        with c1:
+            bk_np = st.text_input("Nomor Pesanan (4 digit)", max_chars=4, key="bk_np")
+            bk_ni = st.text_input("Nomor ID Driver (4 digit)", max_chars=4, key="bk_ni")
+            bk_owner = st.text_input("Nama Pemilik", key="bk_owner",
+                placeholder="Contoh: Titipan Anita")
+        with c2:
+            bk_loc = st.text_input("Lokasi", key="bk_loc", placeholder="Contoh: Rak A1")
+            bk_type = st.radio("Tipe", ["Titipan", "Milik Sendiri"], horizontal=True, key="bk_type")
+            bk_by_opt = users + ["Ketik nama baru..."]
+            bk_by_sel = st.selectbox("Dibuat Oleh", bk_by_opt, key="bk_by")
+            if bk_by_sel == "Ketik nama baru...":
+                bk_by = st.text_input("Nama Anda:", key="bk_by_new")
+            else:
+                bk_by = bk_by_sel
+        
+        if bk_np and bk_ni and bk_owner:
+            st.info(f"🏷️ Label otomatis: `{bk_np}-{bk_ni}-{bk_owner}`")
+        
+        cs, cc = st.columns(2)
+        with cs:
+            if st.button("✅  SIMPAN", use_container_width=True, key="btn_save_kardus"):
+                err = []
+                if not bk_np or len(bk_np) != 4: err.append("Nomor Pesanan harus 4 digit.")
+                if not bk_ni or len(bk_ni) != 4: err.append("Nomor ID harus 4 digit.")
+                if not bk_owner.strip(): err.append("Pemilik tidak boleh kosong.")
+                if not bk_loc.strip(): err.append("Lokasi tidak boleh kosong.")
+                if not bk_by.strip(): err.append("Pembuat tidak boleh kosong.")
+                if err:
+                    for e in err: st.error(f"❌ {e}")
                 else:
-                    bk_by = bk_by_sel
-
-            # Preview label
-            if bk_nomor_pesanan and bk_nomor_id and bk_owner:
-                preview_label = f"{bk_nomor_pesanan}-{bk_nomor_id}-{bk_owner}"
-                st.info(f"🏷️ **Label otomatis:** `{preview_label}`")
-
-            col_save, col_cancel = st.columns(2)
-            with col_save:
-                if st.button("✅  SIMPAN KARDUS BARU", use_container_width=True, key="btn_save_kardus"):
-                    err = []
-                    if not bk_nomor_pesanan or len(bk_nomor_pesanan) != 4:
-                        err.append("Nomor Pesanan harus tepat 4 digit angka.")
-                    if not bk_nomor_id or len(bk_nomor_id) != 4:
-                        err.append("Nomor ID harus tepat 4 digit angka.")
-                    if not bk_owner.strip():
-                        err.append("Nama pemilik tidak boleh kosong.")
-                    if not bk_location.strip():
-                        err.append("Lokasi tidak boleh kosong.")
-                    if not bk_by.strip():
-                        err.append("Nama pembuat tidak boleh kosong.")
-                    if err:
-                        for e in err:
-                            st.error(f"❌ {e}")
-                    else:
-                        label = f"{bk_nomor_pesanan}-{bk_nomor_id}-{bk_owner.strip()}"
-                        now_str = tgl_indo()
-                        conn = get_conn()
-                        conn.execute("""
-                            INSERT INTO kardus
-                              (label,nomor_pesanan,nomor_id,owner_name,location,type,
-                               created_at,created_by,updated_at,updated_by)
-                            VALUES (?,?,?,?,?,?,?,?,?,?)
-                        """, (label, bk_nomor_pesanan, bk_nomor_id, bk_owner.strip(),
-                              bk_location.strip(), bk_type, now_str, bk_by.strip(),
-                              now_str, bk_by.strip()))
-                        new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-                        conn.commit()
-                        conn.close()
-                        audit("kardus", new_id, "CREATE", {}, {"label": label}, bk_by)
-                        st.success(f"✅ Kardus **{label}** berhasil dibuat!")
-                        st.session_state.show_buat_kardus = False
-                        st.rerun()
-            with col_cancel:
-                if st.button("❌  Batal", use_container_width=True, key="btn_cancel_kardus"):
+                    label = f"{bk_np}-{bk_ni}-{bk_owner.strip()}"
+                    now_str = tgl_indo()
+                    new_id = insert_row("kardus", {
+                        "label": label, "nomor_pesanan": bk_np, "nomor_id": bk_ni,
+                        "owner_name": bk_owner.strip(), "location": bk_loc.strip(),
+                        "type": bk_type, "created_at": now_str, "created_by": bk_by.strip(),
+                        "updated_at": now_str, "updated_by": bk_by.strip(),
+                    })
+                    audit("kardus", new_id, "CREATE", {}, {"label": label}, bk_by.strip())
+                    st.success(f"✅ Kardus **{label}** berhasil dibuat!")
                     st.session_state.show_buat_kardus = False
+                    time.sleep(0.5)
                     st.rerun()
-            st.markdown("---")
-
-    # ── Search Bar ──
-    search_kardus = st.text_input("🔍  Cari kardus (nama pemilik, label, lokasi...)",
-        placeholder="Ketik untuk mencari...", key="search_kardus")
-
-    # ── Tabel Kardus ──
+        with cc:
+            if st.button("❌  Batal", use_container_width=True, key="btn_cancel_kardus"):
+                st.session_state.show_buat_kardus = False
+                st.rerun()
+        st.markdown("---")
+    
+    search = st.text_input("🔍 Cari kardus", placeholder="Ketik nama, label, atau lokasi...",
+                            key="search_kardus")
+    
     all_kardus = get_kardus_list()
-    if search_kardus:
-        q = search_kardus.lower()
+    if search:
+        q = search.lower()
         all_kardus = [k for k in all_kardus if
-            q in k["label"].lower() or
-            q in k["owner_name"].lower() or
-            q in k["location"].lower()]
-
+            q in str(k.get("label", "")).lower() or
+            q in str(k.get("owner_name", "")).lower() or
+            q in str(k.get("location", "")).lower()]
+    
     if all_kardus:
-        df_kardus = pd.DataFrame(all_kardus)
-        df_display = df_kardus[["label","owner_name","location","type","total_qty"]].copy()
-        df_display.columns = ["🏷️ Label", "👤 Pemilik", "📍 Lokasi", "🗂️ Tipe", "📊 Jumlah Item"]
-
-        st.markdown(f"**Ditemukan: {len(all_kardus)} kardus**")
-        st.dataframe(df_display, use_container_width=True, hide_index=True,
-            column_config={
-                "🗂️ Tipe": st.column_config.TextColumn(width="medium"),
-                "📊 Jumlah Item": st.column_config.NumberColumn(format="%d pcs"),
+        # Tag NEW untuk kardus < 1 jam
+        now = datetime.now()
+        df_data = []
+        for k in all_kardus:
+            created = parse_tgl(k.get("created_at", ""))
+            tag = ""
+            try:
+                # Parse waktu juga
+                parts = str(k.get("created_at", "")).split(" ")
+                if len(parts) >= 4:
+                    tm = parts[3].split(":")
+                    created = created.replace(hour=int(tm[0]), minute=int(tm[1]))
+                if (now - created).total_seconds() < 3600:
+                    tag = "🆕 "
+            except:
+                pass
+            df_data.append({
+                "🏷️ Label": tag + str(k.get("label", "")),
+                "👤 Pemilik": k.get("owner_name", ""),
+                "📍 Lokasi": k.get("location", ""),
+                "🗂️ Tipe": k.get("type", ""),
+                "📊 Item": k.get("total_qty", 0),
             })
-
-        # ── Pilih Kardus untuk Detail ──
+        
+        df = pd.DataFrame(df_data)
+        st.markdown(f"**Ditemukan: {len(all_kardus)} kardus**")
+        st.dataframe(df, use_container_width=True, hide_index=True,
+            column_config={"📊 Item": st.column_config.NumberColumn(format="%d pcs")})
+        
+        # Detail kardus
         st.markdown("#### 🔎 Lihat Detail Kardus")
-        pilihan_label = [f"{k['owner_name']} | {k['nomor_pesanan']}-{k['nomor_id']} | {k['location']}" for k in all_kardus]
-        sel_kardus_str = st.selectbox("Pilih kardus untuk lihat / edit detail:",
-            ["-- Pilih Kardus --"] + pilihan_label, key="sel_kardus_detail")
-
-        if sel_kardus_str != "-- Pilih Kardus --":
-            sel_idx = pilihan_label.index(sel_kardus_str)
-            sel_k = all_kardus[sel_idx]
-            sel_id = sel_k["id"]
-
-            with st.container():
-                st.markdown("---")
-                # ── Info Kardus ──
-                badge_color = "#1565C0" if sel_k["type"] == "Titipan" else "#2E7D32"
-                st.markdown(f"""
-                <div style="background:white; border:2px solid {badge_color};
-                     border-radius:12px; padding:20px 24px; margin-bottom:16px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <div>
-                            <span style="font-size:24px; font-weight:800; color:{badge_color}">
-                                📦 {sel_k['label']}
-                            </span>
-                            <span style="background:{badge_color}; color:white; padding:4px 12px;
-                                  border-radius:20px; font-size:14px; font-weight:700;
-                                  margin-left:12px;">{sel_k['type']}</span>
-                        </div>
-                    </div>
-                    <div style="margin-top:12px; display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-                        <div>👤 <b>Pemilik:</b> {sel_k['owner_name']}</div>
-                        <div>📍 <b>Lokasi:</b> {sel_k['location']}</div>
-                        <div>📅 <b>Dibuat:</b> {sel_k['created_at']}</div>
-                        <div>👷 <b>Dibuat oleh:</b> {sel_k['created_by']}</div>
-                        <div>🔄 <b>Update terakhir:</b> {sel_k['updated_at']}</div>
-                        <div>🏷️ <b>Nomor Pesanan:</b> {sel_k['nomor_pesanan']} | <b>ID:</b> {sel_k['nomor_id']}</div>
-                    </div>
+        opts = [f"{k['owner_name']} | {k.get('nomor_pesanan')}-{k.get('nomor_id')} | {k.get('location')}"
+                for k in all_kardus]
+        sel = st.selectbox("Pilih:", ["-- Pilih --"] + opts, key="sel_detail")
+        
+        if sel != "-- Pilih --":
+            idx = opts.index(sel)
+            sk = all_kardus[idx]
+            sid = sk["id"]
+            
+            badge = "#1565C0" if sk.get("type") == "Titipan" else "#2E7D32"
+            st.markdown(f"""
+            <div style="background:white; border:2px solid {badge}; border-radius:12px;
+                 padding:18px 22px; margin:12px 0;">
+                <div style="font-size:20px; font-weight:800; color:{badge};">📦 {sk.get('label')}</div>
+                <div style="margin-top:10px;">
+                  <b>👤 Pemilik:</b> {sk.get('owner_name')} &nbsp; | &nbsp;
+                  <b>📍 Lokasi:</b> {sk.get('location')} &nbsp; | &nbsp;
+                  <b>🗂️ Tipe:</b> {sk.get('type')}<br>
+                  <b>📅 Dibuat:</b> {sk.get('created_at')} oleh {sk.get('created_by')}
                 </div>
-                """, unsafe_allow_html=True)
-
-                # ── Isi Produk ──
-                st.markdown("##### 📋 Isi Produk dalam Kardus Ini")
-                inv = get_inventory_by_kardus(sel_id)
-                if inv:
-                    df_inv = pd.DataFrame(inv)
-                    df_inv_disp = df_inv[["product_name","qty","unit_price"]].copy()
-                    df_inv_disp.columns = ["Nama Produk","Stok (pcs)","Harga Satuan (Rp)"]
-                    st.dataframe(df_inv_disp, use_container_width=True, hide_index=True,
-                        column_config={
-                            "Stok (pcs)": st.column_config.NumberColumn(format="%d pcs"),
-                            "Harga Satuan (Rp)": st.column_config.NumberColumn(format="Rp %,.0f"),
-                        })
+            </div>
+            """, unsafe_allow_html=True)
+            
+            inv = get_inventory_by_kardus(sid)
+            if inv:
+                df_inv = pd.DataFrame(inv)
+                df_show = df_inv[["product_name", "qty", "unit_price"]].copy()
+                df_show.columns = ["Produk", "Stok", "Harga"]
+                st.dataframe(df_show, use_container_width=True, hide_index=True,
+                    column_config={
+                        "Stok": st.column_config.NumberColumn(format="%d pcs"),
+                        "Harga": st.column_config.NumberColumn(format="Rp %d"),
+                    })
+            else:
+                st.info("📭 Kardus ini masih kosong.")
+            
+            # Hapus Kardus (kalau kosong)
+            with st.expander("🗑️ Hapus Kardus Ini"):
+                total_stok = sum(int(i.get("qty", 0) or 0) for i in inv)
+                if total_stok > 0:
+                    st.warning(f"⚠️ Kardus berisi {total_stok} item. Kosongkan dulu.")
                 else:
-                    st.info("📭 Kardus ini masih kosong.")
-
-                # ── Tambah Produk ke Kardus ──
-                with st.expander("➕ Tambah Produk ke Kardus Ini"):
                     users = get_all_users()
-                    tp_col1, tp_col2 = st.columns(2)
-                    with tp_col1:
-                        tp_nama = st.text_input("Nama Produk", key=f"tp_nama_{sel_id}",
-                            placeholder="Contoh: Sabun Mandi")
-                        tp_qty = st.number_input("Jumlah (pcs)", min_value=1, value=1, key=f"tp_qty_{sel_id}")
-                    with tp_col2:
-                        tp_harga = st.number_input("Harga Satuan (Rp, opsional)", min_value=0,
-                            value=0, step=500, key=f"tp_harga_{sel_id}")
-                        tp_by_opt = users + ["Ketik nama baru..."]
-                        tp_by_sel = st.selectbox("Dilakukan Oleh", tp_by_opt, key=f"tp_by_{sel_id}")
-                        if tp_by_sel == "Ketik nama baru...":
-                            tp_by = st.text_input("Nama Anda:", key=f"tp_by_new_{sel_id}")
+                    alasan = st.text_input("Alasan hapus:", key=f"alasan_{sid}")
+                    by = st.selectbox("Oleh:", users, key=f"hby_{sid}")
+                    chk = st.checkbox(f"Yakin hapus **{sk.get('label')}**?", key=f"chk_{sid}")
+                    if st.button("🗑️ HAPUS", key=f"btn_hps_{sid}", use_container_width=True):
+                        if not chk:
+                            st.error("Centang konfirmasi dulu!")
+                        elif not alasan.strip():
+                            st.error("Alasan wajib!")
                         else:
-                            tp_by = tp_by_sel
-
-                    if st.button("✅  Simpan Tambah Produk", key=f"btn_tp_{sel_id}", use_container_width=True):
-                        if not tp_nama.strip():
-                            st.error("❌ Nama produk tidak boleh kosong!")
-                        elif tp_qty <= 0:
-                            st.error("❌ Jumlah harus lebih dari 0!")
-                        elif not tp_by.strip():
-                            st.error("❌ Nama pelaksana tidak boleh kosong!")
-                        else:
-                            now_str = tgl_indo()
-                            conn = get_conn()
-                            # Cek apakah produk sudah ada
-                            existing = conn.execute(
-                                "SELECT id, qty FROM inventory WHERE kardus_id=? AND product_name=?",
-                                (sel_id, tp_nama.strip())
-                            ).fetchone()
-                            if existing:
-                                conn.execute("UPDATE inventory SET qty=?, added_at=?, added_by=? WHERE id=?",
-                                    (existing["qty"] + tp_qty, now_str, tp_by.strip(), existing["id"]))
-                            else:
-                                conn.execute("""
-                                    INSERT INTO inventory (kardus_id,product_name,qty,unit_price,added_at,added_by)
-                                    VALUES (?,?,?,?,?,?)
-                                """, (sel_id, tp_nama.strip(), tp_qty, tp_harga, now_str, tp_by.strip()))
-                            # Catat transaksi MASUK
-                            conn.execute("""
-                                INSERT INTO transactions
-                                  (type,date,kardus_id,product_name,qty,price,buyer_name,
-                                   transfer_to,transfer_amount,performed_by,notes)
-                                VALUES (?,?,?,?,?,?,?,?,?,?,?)
-                            """, ("MASUK", now_str, sel_id, tp_nama.strip(), tp_qty, 0,
-                                  "", "", 0, tp_by.strip(), f"Tambah dari detail kardus"))
-                            conn.commit()
-                            conn.close()
-                            st.success(f"✅ {tp_nama} sebanyak {tp_qty} pcs berhasil ditambahkan!")
+                            audit("kardus", sid, "DELETE", dict(sk), {"alasan": alasan}, by)
+                            delete_row("kardus", sid)
+                            st.success("✅ Terhapus!")
+                            time.sleep(0.5)
                             st.rerun()
-
-                # ── Edit Kardus ──
-                with st.expander("✏️ Edit Info Kardus Ini"):
-                    users = get_all_users()
-                    ek_col1, ek_col2 = st.columns(2)
-                    with ek_col1:
-                        ek_nopesanan = st.text_input("Nomor Pesanan", value=sel_k["nomor_pesanan"],
-                            max_chars=4, key=f"ek_nopesanan_{sel_id}")
-                        ek_noid = st.text_input("Nomor ID Driver", value=sel_k["nomor_id"],
-                            max_chars=4, key=f"ek_noid_{sel_id}")
-                        ek_owner = st.text_input("Nama Pemilik", value=sel_k["owner_name"],
-                            key=f"ek_owner_{sel_id}")
-                    with ek_col2:
-                        ek_loc = st.text_input("Lokasi", value=sel_k["location"],
-                            key=f"ek_loc_{sel_id}")
-                        tipe_idx = 0 if sel_k["type"] == "Titipan" else 1
-                        ek_type = st.radio("Tipe", ["Titipan","Milik Sendiri"],
-                            index=tipe_idx, key=f"ek_type_{sel_id}", horizontal=True)
-                        ek_by_opt = users + ["Ketik nama baru..."]
-                        ek_by_sel = st.selectbox("Diedit Oleh", ek_by_opt, key=f"ek_by_{sel_id}")
-                        if ek_by_sel == "Ketik nama baru...":
-                            ek_by = st.text_input("Nama Anda:", key=f"ek_by_new_{sel_id}")
-                        else:
-                            ek_by = ek_by_sel
-
-                    if st.button("✅  Simpan Perubahan", key=f"btn_ek_{sel_id}", use_container_width=True):
-                        err = []
-                        if not ek_nopesanan or len(ek_nopesanan) != 4:
-                            err.append("Nomor Pesanan harus 4 digit.")
-                        if not ek_noid or len(ek_noid) != 4:
-                            err.append("Nomor ID harus 4 digit.")
-                        if not ek_owner.strip():
-                            err.append("Nama pemilik tidak boleh kosong.")
-                        if not ek_by.strip():
-                            err.append("Nama editor tidak boleh kosong.")
-                        if err:
-                            for e in err:
-                                st.error(f"❌ {e}")
-                        else:
-                            new_label = f"{ek_nopesanan}-{ek_noid}-{ek_owner.strip()}"
-                            now_str = tgl_indo()
-                            conn = get_conn()
-                            conn.execute("""
-                                UPDATE kardus
-                                SET label=?,nomor_pesanan=?,nomor_id=?,owner_name=?,
-                                    location=?,type=?,updated_at=?,updated_by=?
-                                WHERE id=?
-                            """, (new_label, ek_nopesanan, ek_noid, ek_owner.strip(),
-                                  ek_loc.strip(), ek_type, now_str, ek_by.strip(), sel_id))
-                            conn.commit()
-                            conn.close()
-                            audit("kardus", sel_id, "UPDATE",
-                                  {"label": sel_k["label"]}, {"label": new_label}, ek_by)
-                            st.success(f"✅ Kardus berhasil diupdate menjadi **{new_label}**!")
-                            st.rerun()
-
-                # ── Hapus Kardus ──
-                with st.expander("🗑️ Hapus Kardus Ini"):
-                    inv_check = get_inventory_by_kardus(sel_id)
-                    total_stok = sum(i["qty"] for i in inv_check)
-                    if total_stok > 0:
-                        st.warning(f"⚠️ Kardus ini masih ada **{total_stok} item** stok. "
-                                   f"Kosongkan dulu sebelum menghapus!")
-                    else:
-                        st.warning("⚠️ Menghapus kardus ini tidak bisa dibatalkan!")
-                        alasan_hapus = st.text_input("Alasan menghapus (wajib diisi):",
-                            key=f"alasan_hapus_{sel_id}")
-                        users = get_all_users()
-                        hapus_by = st.selectbox("Dihapus Oleh", users, key=f"hapus_by_{sel_id}")
-
-                        confirm_hapus = st.checkbox(
-                            f"✅ Saya yakin ingin menghapus kardus **{sel_k['label']}**",
-                            key=f"chk_hapus_{sel_id}")
-                        if st.button("🗑️  HAPUS KARDUS INI", key=f"btn_hapus_{sel_id}",
-                                     use_container_width=True):
-                            if not confirm_hapus:
-                                st.error("❌ Centang kotak konfirmasi terlebih dahulu!")
-                            elif not alasan_hapus.strip():
-                                st.error("❌ Alasan hapus tidak boleh kosong!")
-                            else:
-                                audit("kardus", sel_id, "DELETE",
-                                      dict(sel_k), {"alasan": alasan_hapus}, hapus_by)
-                                conn = get_conn()
-                                conn.execute("DELETE FROM kardus WHERE id=?", (sel_id,))
-                                conn.execute("DELETE FROM inventory WHERE kardus_id=?", (sel_id,))
-                                conn.commit()
-                                conn.close()
-                                st.success(f"✅ Kardus **{sel_k['label']}** berhasil dihapus.")
-                                st.rerun()
     else:
-        st.info("📭 Belum ada kardus. Klik **Buat Kardus Baru** di atas untuk mulai!")
+        st.info("📭 Belum ada kardus. Klik **Buat Kardus Baru** di atas!")
 
-
-# ══════════════════════════════════════════════
-#  TAB 3: BARANG MASUK
-# ══════════════════════════════════════════════
-with tab3:
-    st.markdown("### ➕ Catat Barang Masuk ke Gudang")
-    st.caption("Pilih kardus, tulis nama barang, dan jumlahnya. Selesai!")
-
+# ════════════════════════════════════════════════════
+#  TAB: BARANG MASUK (BULK MULTI-PRODUCT INPUT)
+# ════════════════════════════════════════════════════
+with tab_masuk:
+    st.markdown("### ➕ Barang Masuk (Bulk Multi-Produk)")
+    st.caption("Pilih kardus 1x, tambah banyak produk sekaligus, lalu submit semua dalam 1 klik!")
+    
     all_kardus = get_kardus_list()
     users = get_all_users()
-
+    
     if not all_kardus:
-        st.warning("⚠️ Belum ada kardus! Buat kardus dulu di tab **📦 Daftar Kardus**.")
+        st.warning("⚠️ Belum ada kardus! Buat kardus dulu di tab Daftar Kardus.")
     else:
-        with st.form("form_barang_masuk", clear_on_submit=True):
-            st.markdown("#### 📋 Isi Form Barang Masuk")
-
-            # ── Baris 1: Pilih Kardus (LEBAR PENUH) ──
-            kardus_options = [f"{k['owner_name']}  |  No. {k['nomor_pesanan']}-{k['nomor_id']}  |  📍 {k['location']}" for k in all_kardus]
-            bm_kardus_str = st.selectbox(
-                "1️⃣  Pilih Kardus Tujuan",
-                kardus_options,
-                help="Pilih kardus mana yang akan diisi barang ini"
+        # Step 1: Pilih kardus (sorted newest first dengan tag 🆕)
+        now = datetime.now()
+        kardus_options = []
+        for k in all_kardus:
+            tag = ""
+            try:
+                created = parse_tgl(k.get("created_at", ""))
+                parts = str(k.get("created_at", "")).split(" ")
+                if len(parts) >= 4:
+                    tm = parts[3].split(":")
+                    created = created.replace(hour=int(tm[0]), minute=int(tm[1]))
+                if (now - created).total_seconds() < 3600:
+                    tag = "🆕 "
+            except:
+                pass
+            kardus_options.append(
+                f"{tag}{k['owner_name']} | No. {k.get('nomor_pesanan')}-{k.get('nomor_id')} | 📍 {k.get('location')}"
             )
-            bm_kardus_idx = kardus_options.index(bm_kardus_str)
-            sel_k_info = all_kardus[bm_kardus_idx]
-            bm_kardus_id = sel_k_info["id"]
-
-            # Info kardus terpilih
-            st.info(f"📦 **{sel_k_info['label']}**  |  📍 {sel_k_info['location']}  |  👤 {sel_k_info['owner_name']}")
-
-            # ── Baris 2: Nama Produk (LEBAR PENUH) ──
-            bm_produk = st.text_input(
-                "2️⃣  Nama Produk / Barang",
-                placeholder="Contoh: Sabun Mandi Dove"
+        
+        sel_kardus_str = st.selectbox(
+            "1️⃣  Pilih Kardus Tujuan (kardus baru = 🆕 di atas)",
+            kardus_options,
+            key="bm_kardus"
+        )
+        kid_idx = kardus_options.index(sel_kardus_str)
+        sel_k = all_kardus[kid_idx]
+        kardus_id = sel_k["id"]
+        
+        st.info(f"📦 **{sel_k.get('label')}**  |  📍 {sel_k.get('location')}  |  👤 {sel_k.get('owner_name')}")
+        
+        st.markdown("---")
+        
+        # Step 2: Daftar produk yang akan dimasukkan
+        st.markdown("#### 📋 Daftar Produk Yang Akan Dimasukkan")
+        
+        if st.session_state.bulk_produk_list:
+            for idx, item in enumerate(st.session_state.bulk_produk_list):
+                cols = st.columns([5, 2, 2, 1])
+                with cols[0]:
+                    st.markdown(f"**{idx+1}. {item['product_name']}**")
+                with cols[1]:
+                    st.markdown(f"Qty: **{item['qty']} pcs**")
+                with cols[2]:
+                    st.markdown(f"Harga: **Rp {int(item.get('unit_price', 0)):,}**")
+                with cols[3]:
+                    if st.button("❌", key=f"rm_{idx}", help="Hapus item ini"):
+                        st.session_state.bulk_produk_list.pop(idx)
+                        st.rerun()
+            st.success(f"✅ {len(st.session_state.bulk_produk_list)} produk siap disubmit")
+        else:
+            st.info("Belum ada produk. Tambahkan di bawah ⬇️")
+        
+        st.markdown("---")
+        
+        # Step 3: Tambah produk ke list (searchable dropdown!)
+        st.markdown("#### ➕ Tambah Produk ke Daftar")
+        
+        # Searchable: ketik beberapa huruf, dropdown filter otomatis
+        c_prod, c_qty, c_harga = st.columns([3, 1, 1])
+        with c_prod:
+            # Streamlit selectbox sudah punya fitur "type to search" built-in!
+            new_produk = st.selectbox(
+                "Cari & Pilih Produk Atomy (ketik untuk cari)",
+                [""] + ATOMY_PRODUCTS,
+                key="bm_new_produk",
+                help="Ketik beberapa huruf untuk cari, contoh: 'h' → muncul HemoHim, Hongsamdan, dll"
             )
-
-            # ── Baris 3: Qty dan Harga (2 kolom, input angka — aman di kolom sempit) ──
-            bm_c1, bm_c2 = st.columns(2)
-            with bm_c1:
-                bm_qty = st.number_input("3️⃣  Jumlah (pcs)", min_value=1, value=1)
-            with bm_c2:
-                bm_harga = st.number_input("Harga Satuan (Rp, opsional)", min_value=0, value=0, step=500)
-
-            # ── Baris 4: Tipe Barang ──
-            bm_type = st.radio(
-                "4️⃣  Tipe Barang",
-                ["Titipan", "Milik Sendiri"],
-                horizontal=True,
-                help="Titipan = barang milik orang lain. Milik Sendiri = barang kamu."
-            )
-
-            # ── Baris 5: Dilakukan Oleh (LEBAR PENUH) ──
-            bm_by_opt = users + ["Ketik nama baru..."]
-            bm_by_sel = st.selectbox("5️⃣  Dilakukan Oleh", bm_by_opt)
-            if bm_by_sel == "Ketik nama baru...":
-                bm_by = st.text_input("✏️  Ketik nama kamu:")
-            else:
-                bm_by = bm_by_sel
-
-            # ── Baris 6: Catatan ──
-            bm_notes = st.text_area("6️⃣  Catatan (opsional)",
-                placeholder="Contoh: Barang datang dari Surabaya",
-                height=80)
-
-            submitted_masuk = st.form_submit_button(
-                "✅  SIMPAN BARANG MASUK",
-                use_container_width=True,
-                type="primary"
-            )
-
-        if submitted_masuk:
-            err = []
-            if not bm_produk.strip():
-                err.append("Nama produk tidak boleh kosong!")
-            if bm_qty <= 0:
-                err.append("Jumlah harus lebih dari 0!")
-            final_by = bm_by if bm_by_sel != "Ketik nama baru..." else bm_by
-            if not final_by.strip():
-                err.append("Nama pelaksana tidak boleh kosong!")
-
-            if err:
-                for e in err:
-                    st.error(f"❌ {e}")
-            else:
-                now_str = tgl_indo()
-                conn = get_conn()
-                existing = conn.execute(
-                    "SELECT id, qty FROM inventory WHERE kardus_id=? AND product_name=?",
-                    (bm_kardus_id, bm_produk.strip())
-                ).fetchone()
-                if existing:
-                    conn.execute("UPDATE inventory SET qty=?, added_at=?, added_by=? WHERE id=?",
-                        (existing["qty"] + bm_qty, now_str, final_by.strip(), existing["id"]))
+        with c_qty:
+            new_qty = st.number_input("Qty", min_value=1, value=1, key="bm_new_qty")
+        with c_harga:
+            new_harga = st.number_input("Harga Satuan (Rp)", min_value=0, value=0, step=500,
+                                         key="bm_new_harga")
+        
+        ca, cb = st.columns(2)
+        with ca:
+            if st.button("➕  Tambah ke Daftar", use_container_width=True, key="btn_add_bulk"):
+                if not new_produk:
+                    st.error("Pilih produk dulu!")
+                elif new_qty <= 0:
+                    st.error("Qty harus > 0!")
                 else:
-                    conn.execute("""
-                        INSERT INTO inventory (kardus_id,product_name,qty,unit_price,added_at,added_by)
-                        VALUES (?,?,?,?,?,?)
-                    """, (bm_kardus_id, bm_produk.strip(), bm_qty, bm_harga, now_str, final_by.strip()))
-
-                conn.execute("""
-                    INSERT INTO transactions
-                      (type,date,kardus_id,product_name,qty,price,buyer_name,
-                       transfer_to,transfer_amount,performed_by,notes)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?)
-                """, ("MASUK", now_str, bm_kardus_id, bm_produk.strip(), bm_qty, 0,
-                      "", "", 0, final_by.strip(), bm_notes))
-                conn.commit()
-                conn.close()
-
-                st.success(f"✅ **{bm_qty} pcs {bm_produk}** berhasil masuk ke kardus "
-                           f"**{sel_k_info['label']}**! Stok otomatis diperbarui.")
+                    st.session_state.bulk_produk_list.append({
+                        "product_name": new_produk,
+                        "qty": new_qty,
+                        "unit_price": new_harga,
+                    })
+                    st.rerun()
+        with cb:
+            if st.button("🗑️  Bersihkan Semua", use_container_width=True, key="btn_clear_bulk"):
+                st.session_state.bulk_produk_list = []
+                st.rerun()
+        
+        st.markdown("---")
+        
+        # Step 4: Final submit info + button
+        st.markdown("#### 4️⃣ Info Tambahan")
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            by_opt = users + ["Ketik nama baru..."]
+            by_sel = st.selectbox("Dilakukan Oleh", by_opt, key="bm_by_sel")
+            if by_sel == "Ketik nama baru...":
+                bm_by = st.text_input("Nama:", key="bm_by_new")
+            else:
+                bm_by = by_sel
+        with c2:
+            bm_notes = st.text_area("Catatan (opsional)", height=100,
+                placeholder="Contoh: barang dari Surabaya", key="bm_notes")
+        
+        if st.button(
+            f"💾  SIMPAN SEMUA {len(st.session_state.bulk_produk_list)} PRODUK SEKALIGUS",
+            use_container_width=True,
+            type="primary",
+            disabled=len(st.session_state.bulk_produk_list) == 0
+        ):
+            if not bm_by.strip():
+                st.error("Nama pelaksana wajib!")
+            else:
+                with st.spinner(f"Menyimpan {len(st.session_state.bulk_produk_list)} produk..."):
+                    now_str = tgl_indo()
+                    
+                    # Cek existing inventory untuk kardus ini
+                    existing_inv = get_inventory_by_kardus(kardus_id)
+                    existing_map = {i.get("product_name"): i for i in existing_inv}
+                    
+                    # Prepare batch data
+                    inv_to_insert = []
+                    inv_to_update = []
+                    tx_to_insert = []
+                    
+                    for item in st.session_state.bulk_produk_list:
+                        pname = item["product_name"]
+                        qty = item["qty"]
+                        price = item.get("unit_price", 0)
+                        
+                        if pname in existing_map:
+                            # Update existing
+                            ex = existing_map[pname]
+                            new_qty = int(ex.get("qty", 0) or 0) + qty
+                            inv_to_update.append((ex["id"], {
+                                "qty": new_qty,
+                                "unit_price": price if price > 0 else ex.get("unit_price", 0),
+                                "added_at": now_str,
+                                "added_by": bm_by.strip(),
+                            }))
+                        else:
+                            # Insert new
+                            inv_to_insert.append({
+                                "kardus_id": kardus_id,
+                                "product_name": pname,
+                                "qty": qty,
+                                "unit_price": price,
+                                "added_at": now_str,
+                                "added_by": bm_by.strip(),
+                            })
+                        
+                        # Selalu catat transaksi
+                        tx_to_insert.append({
+                            "type": "MASUK",
+                            "date": now_str,
+                            "kardus_id": kardus_id,
+                            "product_name": pname,
+                            "qty": qty,
+                            "price": 0,
+                            "buyer_name": "",
+                            "transfer_to": "",
+                            "transfer_amount": 0,
+                            "performed_by": bm_by.strip(),
+                            "notes": bm_notes,
+                        })
+                    
+                    # Execute batch
+                    if inv_to_insert:
+                        insert_rows_batch("inventory", inv_to_insert)
+                    for inv_id, updates in inv_to_update:
+                        update_row("inventory", inv_id, updates)
+                    if tx_to_insert:
+                        insert_rows_batch("transactions", tx_to_insert)
+                
+                total = len(st.session_state.bulk_produk_list)
+                st.session_state.bulk_produk_list = []
+                st.success(f"✅ Berhasil! {total} produk masuk ke kardus **{sel_k.get('label')}**!")
                 st.balloons()
+                time.sleep(1)
+                st.rerun()
 
-
-# ══════════════════════════════════════════════
-#  TAB 4: JUAL / AMBIL BARANG
-# ══════════════════════════════════════════════
-with tab4:
-    st.markdown("### 🛒 Jual / Ambil Barang dari Gudang")
-    st.caption("Pilih mode: Jual ke customer (ada pembayaran) atau Ambil titipan (tanpa bayar).")
-
+# ════════════════════════════════════════════════════
+#  TAB: JUAL / AMBIL
+# ════════════════════════════════════════════════════
+with tab_jual:
+    st.markdown("### 🛒 Jual / Ambil Barang")
+    st.caption("Mode A: Jual ke customer (dengan harga). Mode B: Ambil titipan (tanpa bayar).")
+    
     sub_a, sub_b = st.tabs(["💰 A. Jual ke Customer", "📤 B. Ambil Titipan"])
-
+    
     all_kardus = get_kardus_list()
     users = get_all_users()
-
-    # ────────────────────────────────────────
-    #  SUB TAB A: JUAL KE CUSTOMER
-    # ────────────────────────────────────────
+    
     with sub_a:
-        st.markdown("#### 💰 Proses Penjualan ke Customer")
-        if not all_kardus:
-            st.warning("⚠️ Belum ada kardus & stok! Tambah barang masuk dulu.")
+        st.markdown("#### 💰 Proses Penjualan")
+        kardus_punya_stok = [k for k in all_kardus if k.get("total_qty", 0) > 0]
+        
+        if not kardus_punya_stok:
+            st.warning("⚠️ Tidak ada kardus dengan stok!")
         else:
-            ja_kardus_opts = [f"{k['owner_name']} | {k['nomor_pesanan']}-{k['nomor_id']} | Stok: {k['total_qty']} pcs"
-                              for k in all_kardus if k["total_qty"] > 0]
-            if not ja_kardus_opts:
-                st.warning("⚠️ Semua kardus kosong stoknya! Tambah barang masuk dulu.")
+            opts = [f"{k['owner_name']} | No. {k.get('nomor_pesanan')}-{k.get('nomor_id')} | Stok: {k.get('total_qty')} pcs"
+                    for k in kardus_punya_stok]
+            sel_str = st.selectbox("1️⃣  Pilih Kardus Sumber", opts, key="ja_kardus")
+            sel_idx = opts.index(sel_str)
+            sel_k = kardus_punya_stok[sel_idx]
+            kid = sel_k["id"]
+            
+            st.info(f"📦 **{sel_k.get('label')}** | 📍 {sel_k.get('location')} | 👤 {sel_k.get('owner_name')}")
+            
+            inv = get_inventory_by_kardus(kid)
+            inv_ada = [i for i in inv if int(i.get("qty", 0) or 0) > 0]
+            
+            if not inv_ada:
+                st.warning("Kardus ini kosong.")
             else:
-                # ── Baris 1: Pilih Kardus (LEBAR PENUH) ──
-                ja_kardus_str = st.selectbox(
-                    "1️⃣  Pilih Kardus Sumber",
-                    ja_kardus_opts,
-                    key="ja_kardus"
-                )
-                kardus_ada_stok = [k for k in all_kardus if k["total_qty"] > 0]
-                ja_kardus_idx = ja_kardus_opts.index(ja_kardus_str)
-                ja_kardus_info = kardus_ada_stok[ja_kardus_idx]
-                ja_kardus_id = ja_kardus_info["id"]
-
-                st.info(f"📦 **{ja_kardus_info['label']}**  |  📍 {ja_kardus_info['location']}  |  👤 {ja_kardus_info['owner_name']}")
-
-                # ── Baris 2: Pilih Produk (LEBAR PENUH) ──
-                inv_kardus = get_inventory_by_kardus(ja_kardus_id)
-                inv_ada = [i for i in inv_kardus if i["qty"] > 0]
-
-                if not inv_ada:
-                    st.warning("Kardus ini kosong! Pilih kardus lain.")
+                prod_opts = [f"{i.get('product_name')} — stok: {i.get('qty')} pcs" for i in inv_ada]
+                sel_p_str = st.selectbox("2️⃣  Pilih Produk", prod_opts, key="ja_produk")
+                p_idx = prod_opts.index(sel_p_str)
+                p_info = inv_ada[p_idx]
+                max_qty = int(p_info.get("qty", 0) or 0)
+                harga_satuan = float(p_info.get("unit_price", 0) or 0)
+                
+                cc1, cc2 = st.columns(2)
+                with cc1:
+                    qty = st.number_input(f"Qty (max {max_qty})", min_value=1, max_value=max_qty,
+                                          value=1, key="ja_qty")
+                with cc2:
+                    harga = st.number_input("Harga Total (Rp)", min_value=0,
+                        value=int(harga_satuan * qty) if harga_satuan else 0, step=500, key="ja_harga")
+                
+                buyer = st.text_input("Nama Pembeli", placeholder="Pak Budi", key="ja_buyer")
+                tr_to = st.text_input("Uang Ditransfer ke:", value=sel_k.get("owner_name", ""),
+                                      key="ja_tr")
+                by_opt = users + ["Ketik nama baru..."]
+                by_sel = st.selectbox("Dilakukan Oleh", by_opt, key="ja_by")
+                ja_by = st.text_input("Nama:", key="ja_by_new") if by_sel == "Ketik nama baru..." else by_sel
+                ja_notes = st.text_area("Catatan (opsional)", height=60, key="ja_notes")
+                
+                if not st.session_state.konfirmasi_jual:
+                    if st.button("🛒  PROSES PENJUALAN", use_container_width=True, key="btn_jual"):
+                        if not buyer.strip(): st.error("Nama pembeli wajib!")
+                        elif not ja_by.strip(): st.error("Nama pelaksana wajib!")
+                        else:
+                            st.session_state.konfirmasi_jual = True
+                            st.session_state.last_jual_data = {
+                                "kid": kid, "label": sel_k.get("label"),
+                                "produk": p_info.get("product_name"),
+                                "qty": qty, "harga": harga, "buyer": buyer,
+                                "tr_to": tr_to, "by": ja_by, "notes": ja_notes,
+                            }
+                            st.rerun()
                 else:
-                    produk_opts = [f"{i['product_name']}  —  stok: {i['qty']} pcs" for i in inv_ada]
-                    ja_produk_str = st.selectbox("2️⃣  Pilih Produk", produk_opts, key="ja_produk")
-                    ja_produk_idx = produk_opts.index(ja_produk_str)
-                    ja_produk_info = inv_ada[ja_produk_idx]
-                    ja_produk_nama = ja_produk_info["product_name"]
-                    ja_stok_max = ja_produk_info["qty"]
-                    ja_harga_satuan = ja_produk_info.get("unit_price", 0) or 0
-
-                    # ── Baris 3: Jumlah dan Harga (2 kolom — angka, aman sempit) ──
-                    ja_c1, ja_c2 = st.columns(2)
-                    with ja_c1:
-                        ja_qty = st.number_input(
-                            f"3️⃣  Jumlah Dijual (maks: {ja_stok_max} pcs)",
-                            min_value=1, max_value=ja_stok_max, value=1, key="ja_qty"
-                        )
-                    with ja_c2:
-                        ja_harga_total = st.number_input(
-                            "4️⃣  Harga Total (Rp)",
-                            min_value=0,
-                            value=int(ja_harga_satuan * 1),
-                            step=500,
-                            key="ja_harga"
-                        )
-
-                    # ── Baris 4: Nama Pembeli (LEBAR PENUH) ──
-                    ja_buyer = st.text_input("5️⃣  Nama Pembeli",
-                        placeholder="Contoh: Pak Budi", key="ja_buyer")
-
-                    # ── Baris 5: Transfer ke (LEBAR PENUH) ──
-                    ja_transfer_to = st.text_input(
-                        "6️⃣  Uang Ditransfer ke:",
-                        value=ja_kardus_info["owner_name"],
-                        key="ja_transfer"
-                    )
-
-                    # ── Baris 6: Dilakukan Oleh (LEBAR PENUH) ──
-                    ja_by_opt = users + ["Ketik nama baru..."]
-                    ja_by_sel = st.selectbox("7️⃣  Dilakukan Oleh", ja_by_opt, key="ja_by_sel")
-                    if ja_by_sel == "Ketik nama baru...":
-                        ja_by = st.text_input("✏️  Ketik nama kamu:", key="ja_by_new")
-                    else:
-                        ja_by = ja_by_sel
-
-                    ja_notes = st.text_area("Catatan (opsional)", height=60, key="ja_notes")
-
-                if inv_ada:
-                    # Info ringkasan sebelum konfirmasi
-                    st.markdown(f"""
-                    <div style="background:#e8f5e9; border:2px solid #2E7D32;
-                         border-radius:10px; padding:16px 20px; margin:12px 0;">
-                        <b>📋 Ringkasan Penjualan:</b><br>
-                        🏷️ Kardus: <b>{ja_kardus_info['label']}</b> &nbsp;|&nbsp;
-                        📍 Lokasi: <b>{ja_kardus_info['location']}</b><br>
-                        🛒 Produk: <b>{ja_produk_nama}</b> x {ja_qty} pcs &nbsp;|&nbsp;
-                        💰 Total: <b>{format_rupiah(ja_harga_total)}</b><br>
-                        💸 Transfer ke: <b>{ja_kardus_info['owner_name']}</b>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                    if not st.session_state.konfirmasi_jual:
-                        if st.button("🛒  PROSES PENJUALAN", use_container_width=True,
-                                     key="btn_proses_jual"):
-                            # Validasi
-                            err = []
-                            final_by_jual = ja_by if ja_by_sel != "Ketik nama baru..." else ja_by
-                            if not ja_buyer.strip():
-                                err.append("Nama pembeli tidak boleh kosong!")
-                            if not final_by_jual.strip():
-                                err.append("Nama pelaksana tidak boleh kosong!")
-                            if err:
-                                for e in err:
-                                    st.error(f"❌ {e}")
-                            else:
-                                st.session_state.konfirmasi_jual = True
-                                st.session_state.last_jual_data = {
-                                    "kardus_id": ja_kardus_id,
-                                    "kardus_label": ja_kardus_info["label"],
-                                    "produk": ja_produk_nama,
-                                    "qty": ja_qty,
-                                    "harga": ja_harga_total,
-                                    "buyer": ja_buyer,
-                                    "transfer_to": ja_transfer_to,
-                                    "by": final_by_jual,
-                                    "notes": ja_notes,
-                                    "inv_id": ja_produk_info["id"],
-                                }
-                                st.rerun()
-                    else:
-                        d = st.session_state.last_jual_data
-                        st.warning(f"⚠️ **Yakin mau jual {d['qty']} pcs {d['produk']} "
-                                   f"ke {d['buyer']} seharga {format_rupiah(d['harga'])}?**")
-                        ck1, ck2 = st.columns(2)
-                        with ck1:
-                            if st.button("✅  YA, PROSES SEKARANG!", use_container_width=True,
-                                         key="btn_konfirm_jual"):
-                                now_str = tgl_indo()
-                                conn = get_conn()
-                                # Kurangi stok
-                                conn.execute(
-                                    "UPDATE inventory SET qty=qty-? WHERE id=?",
-                                    (d["qty"], d["inv_id"])
-                                )
-                                # Catat transaksi
-                                conn.execute("""
-                                    INSERT INTO transactions
-                                      (type,date,kardus_id,product_name,qty,price,buyer_name,
-                                       transfer_to,transfer_amount,performed_by,notes)
-                                    VALUES (?,?,?,?,?,?,?,?,?,?,?)
-                                """, ("PENJUALAN", now_str, d["kardus_id"], d["produk"],
-                                      d["qty"], d["harga"], d["buyer"], d["transfer_to"],
-                                      d["harga"], d["by"], d["notes"]))
-                                conn.commit()
-                                conn.close()
-                                st.session_state.konfirmasi_jual = False
-                                st.session_state.last_jual_data = {}
-                                st.success(f"✅ Penjualan berhasil! "
-                                           f"**{d['qty']} pcs {d['produk']}** terjual ke "
-                                           f"**{d['buyer']}** seharga **{format_rupiah(d['harga'])}**. "
-                                           f"Stok otomatis dikurangi.")
+                    d = st.session_state.last_jual_data
+                    st.warning(f"⚠️ **Konfirmasi**: Jual {d['qty']} pcs {d['produk']} ke {d['buyer']} "
+                               f"seharga {format_rupiah(d['harga'])}?")
+                    cy, cn = st.columns(2)
+                    with cy:
+                        if st.button("✅ YA, PROSES!", use_container_width=True, key="btn_konfirm_jual"):
+                            success, msg = kurangi_stok(
+                                d["kid"], d["produk"], d["qty"], d["by"],
+                                tipe="PENJUALAN", buyer=d["buyer"], price=d["harga"],
+                                transfer_to=d["tr_to"], notes=d["notes"]
+                            )
+                            st.session_state.konfirmasi_jual = False
+                            st.session_state.last_jual_data = {}
+                            if success:
+                                st.success(f"✅ Penjualan berhasil! {msg}")
                                 st.balloons()
-                                st.rerun()
-                        with ck2:
-                            if st.button("❌  Batal", use_container_width=True, key="btn_batal_jual"):
-                                st.session_state.konfirmasi_jual = False
-                                st.session_state.last_jual_data = {}
-                                st.rerun()
-
-    # ────────────────────────────────────────
-    #  SUB TAB B: AMBIL TITIPAN
-    # ────────────────────────────────────────
+                            else:
+                                st.error(msg)
+                            time.sleep(1)
+                            st.rerun()
+                    with cn:
+                        if st.button("❌ Batal", use_container_width=True, key="btn_batal_jual"):
+                            st.session_state.konfirmasi_jual = False
+                            st.rerun()
+    
     with sub_b:
         st.markdown("#### 📤 Ambil Titipan (Tanpa Pembayaran)")
-        st.caption("Untuk mengambil barang titipan tanpa transaksi jual-beli.")
-
-        if not all_kardus:
-            st.warning("⚠️ Belum ada kardus & stok!")
+        titipan_kardus = [k for k in all_kardus if k.get("type") == "Titipan" and k.get("total_qty", 0) > 0]
+        
+        if not titipan_kardus:
+            st.info("Tidak ada kardus titipan dengan stok.")
         else:
-            titipan_kardus = [k for k in all_kardus if k["type"] == "Titipan" and k["total_qty"] > 0]
-            if not titipan_kardus:
-                st.info("ℹ️ Tidak ada kardus titipan yang punya stok.")
-            else:
-                at_opts = [f"{k['owner_name']}  |  No. {k['nomor_pesanan']}-{k['nomor_id']}  |  Stok: {k['total_qty']} pcs"
-                           for k in titipan_kardus]
-
-                # ── Baris 1: Pilih Kardus (LEBAR PENUH) ──
-                at_kardus_str = st.selectbox("1️⃣  Pilih Kardus Titipan", at_opts, key="at_kardus")
-                at_kardus_idx = at_opts.index(at_kardus_str)
-                at_kardus_info = titipan_kardus[at_kardus_idx]
-                at_kardus_id = at_kardus_info["id"]
-
-                st.info(f"📦 **{at_kardus_info['label']}**  |  📍 {at_kardus_info['location']}  |  👤 {at_kardus_info['owner_name']}")
-
-                inv_at = get_inventory_by_kardus(at_kardus_id)
-                inv_at_ada = [i for i in inv_at if i["qty"] > 0]
-
-                if inv_at_ada:
-                    # ── Baris 2: Pilih Produk (LEBAR PENUH) ──
-                    at_produk_opts = [f"{i['product_name']}  —  stok: {i['qty']} pcs"
-                                      for i in inv_at_ada]
-                    at_produk_str = st.selectbox("2️⃣  Pilih Produk", at_produk_opts, key="at_produk")
-                    at_produk_idx = at_produk_opts.index(at_produk_str)
-                    at_produk_info = inv_at_ada[at_produk_idx]
-
-                    # ── Baris 3: Jumlah (LEBAR PENUH) ──
-                    at_qty = st.number_input(
-                        f"3️⃣  Jumlah Diambil (maks: {at_produk_info['qty']} pcs)",
-                        min_value=1, max_value=at_produk_info["qty"], value=1, key="at_qty"
-                    )
-
-                    # ── Baris 4: Dilakukan Oleh (LEBAR PENUH) ──
-                    at_by_opt = users + ["Ketik nama baru..."]
-                    at_by_sel = st.selectbox("4️⃣  Dilakukan Oleh", at_by_opt, key="at_by_sel")
-                    if at_by_sel == "Ketik nama baru...":
-                        at_by = st.text_input("✏️  Ketik nama kamu:", key="at_by_new")
-                    else:
-                        at_by = at_by_sel
-
-                    at_notes = st.text_area("Catatan (opsional)", height=80, key="at_notes",
-                        placeholder="Contoh: Diambil langsung oleh pemilik")
-
-                if inv_at_ada:
-                    st.markdown(f"""
-                    <div style="background:#e3f2fd; border:2px solid #1565C0;
-                         border-radius:10px; padding:16px 20px; margin:12px 0;">
-                        <b>📋 Ringkasan Pengambilan:</b><br>
-                        🏷️ Kardus: <b>{at_kardus_info['label']}</b> (Titipan)<br>
-                        👤 Pemilik: <b>{at_kardus_info['owner_name']}</b><br>
-                        📦 Produk: <b>{at_produk_info['product_name']}</b> x {at_qty} pcs diambil
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                    if not st.session_state.konfirmasi_ambil:
-                        if st.button("📤  PROSES PENGAMBILAN TITIPAN", use_container_width=True,
-                                     key="btn_ambil"):
-                            final_by_ambil = at_by if at_by_sel != "Ketik nama baru..." else at_by
-                            if not final_by_ambil.strip():
-                                st.error("❌ Nama pelaksana tidak boleh kosong!")
-                            else:
-                                st.session_state.konfirmasi_ambil = True
-                                st.session_state.last_ambil_data = {
-                                    "kardus_id": at_kardus_id,
-                                    "kardus_label": at_kardus_info["label"],
-                                    "produk": at_produk_info["product_name"],
-                                    "qty": at_qty,
-                                    "by": final_by_ambil,
-                                    "notes": at_notes,
-                                    "inv_id": at_produk_info["id"],
-                                    "owner": at_kardus_info["owner_name"],
-                                }
-                                st.rerun()
-                    else:
-                        d = st.session_state.get("last_ambil_data", {})
-                        if d:
-                            st.warning(f"⚠️ **Yakin ambil {d['qty']} pcs {d['produk']} "
-                                       f"dari kardus {d['kardus_label']} (milik {d['owner']})?**")
-                            ak1, ak2 = st.columns(2)
-                            with ak1:
-                                if st.button("✅  YA, AMBIL SEKARANG!", use_container_width=True,
-                                             key="btn_konfirm_ambil"):
-                                    now_str = tgl_indo()
-                                    conn = get_conn()
-                                    conn.execute(
-                                        "UPDATE inventory SET qty=qty-? WHERE id=?",
-                                        (d["qty"], d["inv_id"])
-                                    )
-                                    conn.execute("""
-                                        INSERT INTO transactions
-                                          (type,date,kardus_id,product_name,qty,price,buyer_name,
-                                           transfer_to,transfer_amount,performed_by,notes)
-                                        VALUES (?,?,?,?,?,?,?,?,?,?,?)
-                                    """, ("KELUAR", now_str, d["kardus_id"], d["produk"],
-                                          d["qty"], 0, "", d["owner"], 0, d["by"], d["notes"]))
-                                    conn.commit()
-                                    conn.close()
-                                    st.session_state.konfirmasi_ambil = False
-                                    st.success(f"✅ **{d['qty']} pcs {d['produk']}** berhasil diambil "
-                                               f"dari kardus **{d['kardus_label']}**. Stok dikurangi.")
-                                    st.rerun()
-                            with ak2:
-                                if st.button("❌  Batal", use_container_width=True,
-                                             key="btn_batal_ambil"):
-                                    st.session_state.konfirmasi_ambil = False
-                                    st.rerun()
-
-
-# ══════════════════════════════════════════════
-#  TAB 5: LAPORAN & RIWAYAT
-# ══════════════════════════════════════════════
-with tab5:
-    st.markdown("### 📊 Laporan & Riwayat Transaksi")
-    st.caption("Lihat semua aktivitas gudang dalam satu tempat.")
-
-    # ── Filter Periode ──
-    periode = st.radio(
-        "Pilih Periode Laporan:",
-        ["📅 Minggu Ini", "📆 Bulan Ini", "📋 Semua Data"],
-        horizontal=True,
-        key="lap_periode"
-    )
-
-    conn = get_conn()
-    now = datetime.now()
-
-    if periode == "📅 Minggu Ini":
-        start_date = now - timedelta(days=7)
-        label_periode = "7 Hari Terakhir"
-    elif periode == "📆 Bulan Ini":
-        start_date = now.replace(day=1)
-        label_periode = f"Bulan {now.strftime('%B %Y')}"
-    else:
-        start_date = datetime(2000, 1, 1)
-        label_periode = "Semua Waktu"
-
-    all_tx = conn.execute("""
-        SELECT t.*, k.label as kardus_label, k.owner_name, k.type as kardus_type
-        FROM transactions t
-        LEFT JOIN kardus k ON t.kardus_id = k.id
-        ORDER BY t.id DESC
-    """).fetchall()
-    all_tx = [dict(r) for r in all_tx]
-    conn.close()
-
-    # Filter berdasarkan periode
-    def parse_tgl(tgl_str):
-        try:
-            parts = tgl_str.strip().split(" ")
-            bulan_map = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"Mei":5,"Jun":6,
-                         "Jul":7,"Agu":8,"Sep":9,"Okt":10,"Nov":11,"Des":12}
-            d = int(parts[0]); m = bulan_map.get(parts[1], 1); y = int(parts[2])
-            return datetime(y, m, d)
-        except:
-            return datetime(2000, 1, 1)
-
-    filtered_tx = [t for t in all_tx if parse_tgl(t["date"]) >= start_date]
-
-    # ── Ringkasan ──
-    st.markdown(f"#### 📋 Ringkasan: {label_periode}")
-    r_col1, r_col2, r_col3 = st.columns(3)
-
-    masuk_tx = [t for t in filtered_tx if t["type"] == "MASUK"]
-    keluar_tx = [t for t in filtered_tx if t["type"] == "KELUAR"]
-    jual_tx = [t for t in filtered_tx if t["type"] == "PENJUALAN"]
-
-    total_masuk = sum(t["qty"] for t in masuk_tx)
-    total_keluar = sum(t["qty"] for t in keluar_tx)
-    total_jual_qty = sum(t["qty"] for t in jual_tx)
-    total_jual_rp = sum(t["price"] for t in jual_tx)
-
-    titipan_masuk = sum(t["qty"] for t in masuk_tx
-                        if t.get("kardus_type") == "Titipan")
-    sendiri_masuk = total_masuk - titipan_masuk
-
-    with r_col1:
-        st.metric("📥 Total Masuk", f"{total_masuk} pcs",
-                  help=f"Titipan: {titipan_masuk} | Milik Sendiri: {sendiri_masuk}")
-        st.caption(f"Titipan: {titipan_masuk} pcs | Milik Sendiri: {sendiri_masuk} pcs")
-    with r_col2:
-        st.metric("📤 Total Keluar", f"{total_keluar} pcs")
-    with r_col3:
-        st.metric("💰 Total Penjualan", format_rupiah(total_jual_rp),
-                  help=f"{total_jual_qty} item terjual")
-        st.caption(f"{total_jual_qty} item terjual")
-
-    st.markdown("---")
-
-    # ── 5 Produk Terlaris ──
-    if jual_tx:
-        st.markdown("#### 🏆 5 Produk Terlaris")
-        from collections import Counter
-        produk_counter = Counter()
-        for t in jual_tx:
-            produk_counter[t["product_name"]] += t["qty"]
-        top5 = produk_counter.most_common(5)
-        df_top5 = pd.DataFrame(top5, columns=["Produk", "Total Terjual (pcs)"])
-        df_top5.index = df_top5.index + 1
-        st.dataframe(df_top5, use_container_width=True)
-        st.markdown("---")
-
-    # ── Filter Tabel Riwayat ──
-    st.markdown("#### 📜 Riwayat Transaksi Lengkap")
-
-    f_col1, f_col2, f_col3 = st.columns(3)
-    with f_col1:
-        filter_tipe = st.selectbox("Filter Tipe:", ["Semua", "MASUK", "KELUAR", "PENJUALAN"],
-            key="filter_tipe")
-    with f_col2:
-        search_tx = st.text_input("🔍 Cari produk/kardus:", placeholder="Ketik untuk cari...",
-            key="search_tx")
-    with f_col3:
-        st.write("")
-
-    display_tx = filtered_tx.copy()
-    if filter_tipe != "Semua":
-        display_tx = [t for t in display_tx if t["type"] == filter_tipe]
-    if search_tx:
-        q = search_tx.lower()
-        display_tx = [t for t in display_tx if
-            q in (t.get("product_name") or "").lower() or
-            q in (t.get("kardus_label") or "").lower() or
-            q in (t.get("buyer_name") or "").lower()]
-
-    if display_tx:
-        df_tx = pd.DataFrame(display_tx)
-        cols_tx = ["date","type","kardus_label","product_name","qty","price",
-                   "buyer_name","transfer_to","performed_by","notes"]
-        cols_tx = [c for c in cols_tx if c in df_tx.columns]
-        df_tx = df_tx[cols_tx].copy()
-        df_tx.columns = ["Tanggal","Tipe","Kardus","Produk","Qty","Harga (Rp)",
-                         "Pembeli","Transfer ke","Dilakukan Oleh","Catatan"][:len(cols_tx)]
-
-        st.markdown(f"**Ditemukan: {len(display_tx)} transaksi**")
-        st.dataframe(df_tx, use_container_width=True, hide_index=True,
-            column_config={
-                "Harga (Rp)": st.column_config.NumberColumn(format="Rp %,.0f"),
-                "Qty": st.column_config.NumberColumn(format="%d pcs"),
-            })
-
-        # ── Export Excel ──
-        st.markdown("---")
-        if st.button("📥  Export ke Excel (.xlsx)", use_container_width=True,
-                     key="btn_export"):
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-                df_tx.to_excel(writer, sheet_name="Riwayat Transaksi", index=False)
-                # Summary sheet
-                summary_data = {
-                    "Keterangan": ["Periode", "Total Masuk", "Total Keluar",
-                                   "Total Terjual (qty)", "Total Penjualan (Rp)"],
-                    "Nilai": [label_periode, f"{total_masuk} pcs", f"{total_keluar} pcs",
-                              f"{total_jual_qty} pcs", f"Rp {int(total_jual_rp):,}"]
-                }
-                pd.DataFrame(summary_data).to_excel(writer, sheet_name="Ringkasan", index=False)
-            buffer.seek(0)
-            st.download_button(
-                label="📥  Klik di sini untuk Download Excel",
-                data=buffer,
-                file_name=f"GudangKu_Laporan_{now.strftime('%Y%m%d_%H%M')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
-    else:
-        st.info("📭 Tidak ada transaksi yang sesuai filter.")
-
-    st.markdown("---")
-
-    # ── EDIT PRODUK (Protected dengan checkbox) ──
-    with st.expander("⚙️ EDIT PRODUK (Protected - Hati-hati!)", expanded=False):
-        st.warning("⚠️ **FITUR SENSITIF** — Pastikan benar-benar mau edit sebelum submit!")
-        st.caption("Edit ini akan mengubah qty dan harga produk di gudang. Perubahan tidak bisa dibatalkan!")
-        
-        st.markdown("##### Cari Produk yang Mau Diedit")
-        
-        # Ambil semua produk dari database
-        conn = get_conn()
-        all_inventory = conn.execute("""
-            SELECT i.id, i.kardus_id, i.product_name, i.qty, i.unit_price,
-                   k.label as kardus_label, k.owner_name
-            FROM inventory i
-            JOIN kardus k ON i.kardus_id = k.id
-            ORDER BY k.owner_name, i.product_name
-        """).fetchall()
-        conn.close()
-        all_inventory = [dict(r) for r in all_inventory]
-        
-        if all_inventory:
-            # Search + filter produk
-            edit_search = st.text_input("🔍 Cari produk atau kardus:", 
-                placeholder="Contoh: HEMOHIM atau Titipan Anita", key="edit_search")
+            opts = [f"{k['owner_name']} | No. {k.get('nomor_pesanan')}-{k.get('nomor_id')} | Stok: {k.get('total_qty')} pcs"
+                    for k in titipan_kardus]
+            sel_str = st.selectbox("1️⃣  Pilih Kardus Titipan", opts, key="at_kardus")
+            sel_idx = opts.index(sel_str)
+            sel_k = titipan_kardus[sel_idx]
+            kid = sel_k["id"]
             
-            if edit_search:
-                filtered_inv = [i for i in all_inventory if
-                    edit_search.lower() in i["product_name"].lower() or
-                    edit_search.lower() in i["kardus_label"].lower() or
-                    edit_search.lower() in i["owner_name"].lower()]
-            else:
-                filtered_inv = all_inventory
+            st.info(f"📦 **{sel_k.get('label')}** | 📍 {sel_k.get('location')} | 👤 {sel_k.get('owner_name')}")
             
-            if filtered_inv:
-                # Pilih produk
-                produk_opts = [f"{i['product_name']} | Kardus: {i['kardus_label']} | Qty: {i['qty']} pcs" 
-                               for i in filtered_inv]
-                selected_produk_edit_str = st.selectbox(
-                    "Pilih produk untuk diedit:",
-                    produk_opts,
-                    key="edit_produk_select"
-                )
+            inv = get_inventory_by_kardus(kid)
+            inv_ada = [i for i in inv if int(i.get("qty", 0) or 0) > 0]
+            
+            if inv_ada:
+                prod_opts = [f"{i.get('product_name')} — stok: {i.get('qty')} pcs" for i in inv_ada]
+                sel_p_str = st.selectbox("2️⃣  Pilih Produk", prod_opts, key="at_produk")
+                p_idx = prod_opts.index(sel_p_str)
+                p_info = inv_ada[p_idx]
+                max_qty = int(p_info.get("qty", 0) or 0)
                 
-                selected_edit_idx = produk_opts.index(selected_produk_edit_str)
-                selected_edit = filtered_inv[selected_edit_idx]
+                qty = st.number_input(f"Jumlah Diambil (max {max_qty})",
+                    min_value=1, max_value=max_qty, value=1, key="at_qty")
+                by_opt = users + ["Ketik nama baru..."]
+                by_sel = st.selectbox("Oleh", by_opt, key="at_by")
+                at_by = st.text_input("Nama:", key="at_by_new") if by_sel == "Ketik nama baru..." else by_sel
+                at_notes = st.text_area("Catatan", height=60, key="at_notes")
                 
-                # Tampilkan info saat ini
-                st.markdown(f"""
-                <div style="background:#e3f2fd; border:2px solid #1565C0; border-radius:10px; padding:16px 20px;">
-                    <b>📦 Produk Saat Ini:</b><br>
-                    🏷️ <b>{selected_edit['product_name']}</b><br>
-                    📍 Kardus: <b>{selected_edit['kardus_label']}</b><br>
-                    👤 Pemilik: <b>{selected_edit['owner_name']}</b><br>
-                    📊 Stok saat ini: <b>{selected_edit['qty']} pcs</b><br>
-                    💰 Harga saat ini: <b>Rp {int(selected_edit['unit_price']):,}</b>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                st.markdown("##### Edit Data")
-                
-                edit_c1, edit_c2 = st.columns(2)
-                with edit_c1:
-                    edit_new_qty = st.number_input(
-                        "Qty baru (pcs):",
-                        min_value=0,
-                        value=selected_edit["qty"],
-                        key="edit_new_qty"
-                    )
-                with edit_c2:
-                    edit_new_price = st.number_input(
-                        "Harga satuan baru (Rp):",
-                        min_value=0,
-                        value=int(selected_edit["unit_price"]),
-                        step=500,
-                        key="edit_new_price"
-                    )
-                
-                edit_by_opt = get_all_users() + ["Ketik nama baru..."]
-                edit_by_sel = st.selectbox("Diedit Oleh:", edit_by_opt, key="edit_by_sel")
-                if edit_by_sel == "Ketik nama baru...":
-                    edit_by = st.text_input("Nama Anda:", key="edit_by_new")
+                if not st.session_state.konfirmasi_ambil:
+                    if st.button("📤  PROSES PENGAMBILAN", use_container_width=True, key="btn_ambil"):
+                        if not at_by.strip(): st.error("Nama wajib!")
+                        else:
+                            st.session_state.konfirmasi_ambil = True
+                            st.session_state.last_ambil_data = {
+                                "kid": kid, "produk": p_info.get("product_name"),
+                                "qty": qty, "by": at_by, "notes": at_notes,
+                                "owner": sel_k.get("owner_name"),
+                                "label": sel_k.get("label"),
+                            }
+                            st.rerun()
                 else:
-                    edit_by = edit_by_sel
+                    d = st.session_state.last_ambil_data
+                    st.warning(f"⚠️ Konfirmasi: Ambil {d['qty']} pcs {d['produk']} dari {d['label']}?")
+                    cy, cn = st.columns(2)
+                    with cy:
+                        if st.button("✅ YA!", use_container_width=True, key="btn_konfirm_ambil"):
+                            success, msg = kurangi_stok(d["kid"], d["produk"], d["qty"], d["by"],
+                                tipe="KELUAR", transfer_to=d["owner"], notes=d["notes"])
+                            st.session_state.konfirmasi_ambil = False
+                            st.session_state.last_ambil_data = {}
+                            if success:
+                                st.success(f"✅ {msg}")
+                            else:
+                                st.error(msg)
+                            time.sleep(1)
+                            st.rerun()
+                    with cn:
+                        if st.button("❌ Batal", use_container_width=True, key="btn_batal_ambil"):
+                            st.session_state.konfirmasi_ambil = False
+                            st.rerun()
+
+# ════════════════════════════════════════════════════
+#  TAB: CARI BARANG
+# ════════════════════════════════════════════════════
+with tab_cari:
+    st.markdown("### 🔍 Cari Barang di Gudang")
+    st.caption("Cari produk untuk lihat di kardus mana saja, dan langsung ambil jika perlu.")
+    
+    users = get_all_users()
+    
+    search_input = st.text_input(
+        "Ketik nama produk (contoh: 'h' → muncul HemoHim, Hongsamdan, dll)",
+        placeholder="HemoHim, vitamin, paket, sunscreen..."
+    )
+    
+    if search_input:
+        filtered = get_filtered_products(search_input)
+        if filtered:
+            sel_produk = st.selectbox("📦 Pilih produk:", filtered, key="cari_pilih")
+            
+            results = search_produk_di_kardus(sel_produk)
+            
+            if results:
+                st.markdown(f"#### 📍 **{sel_produk}** ada di {len(results)} kardus:")
                 
-                edit_notes = st.text_area("Alasan edit:", height=60, key="edit_notes",
-                    placeholder="Contoh: Koreksi input sebelumnya, stok fisik tidak sesuai, dll")
+                df = pd.DataFrame(results)
+                df_show = df[["kardus_label", "owner_name", "location", "kardus_type",
+                              "qty", "unit_price"]].copy()
+                df_show.columns = ["Kardus", "Pemilik", "📍 Lokasi", "Tipe", "Stok", "Harga"]
+                st.dataframe(df_show, use_container_width=True, hide_index=True,
+                    column_config={
+                        "Stok": st.column_config.NumberColumn(format="%d pcs"),
+                        "Harga": st.column_config.NumberColumn(format="Rp %d"),
+                    })
                 
-                st.markdown("##### ✅ KONFIRMASI (Baca Sebelum Submit!)")
+                st.markdown("---")
+                st.markdown("#### 📤 Ambil Barang")
                 
-                # 2 checkbox konfirmasi (protective)
-                conf1 = st.checkbox(
-                    f"✅ Saya sudah yakin perubahan dari **Qty {selected_edit['qty']} → {edit_new_qty}** dan **Harga Rp {int(selected_edit['unit_price']):,} → Rp {int(edit_new_price):,}**",
-                    key="edit_conf1"
+                kardus_choices = [f"{r['kardus_label']} ({r['qty']} pcs)" for r in results]
+                sel_kardus_amb = st.selectbox("Dari kardus:", kardus_choices, key="cari_amb_kardus")
+                amb_idx = kardus_choices.index(sel_kardus_amb)
+                amb_target = results[amb_idx]
+                max_qty = amb_target["qty"]
+                
+                ac1, ac2 = st.columns(2)
+                with ac1:
+                    amb_qty = st.number_input(f"Qty (max {max_qty})", min_value=1,
+                        max_value=max_qty, value=1, key="cari_amb_qty")
+                with ac2:
+                    by_opt = users + ["Ketik nama baru..."]
+                    by_sel = st.selectbox("Oleh", by_opt, key="cari_amb_by")
+                    amb_by = st.text_input("Nama:", key="cari_amb_by_new") if by_sel == "Ketik nama baru..." else by_sel
+                
+                amb_notes = st.text_area("Catatan", height=60, key="cari_amb_notes")
+                
+                conf = st.checkbox(
+                    f"✅ Yakin ambil {amb_qty} pcs {sel_produk} dari {amb_target['kardus_label']}",
+                    key="cari_conf"
                 )
-                conf2 = st.checkbox(
-                    "✅ Saya mengerti perubahan tidak bisa dibatalkan dan audit log akan tercatat",
-                    key="edit_conf2"
-                )
-                conf3 = st.checkbox(
-                    "✅ Saya sudah input ALASAN edit di atas",
-                    key="edit_conf3"
-                )
                 
-                if st.button("🔴 SUBMIT EDIT SEKARANG", use_container_width=True, 
-                             key="btn_edit_submit", type="secondary",
-                             disabled=not (conf1 and conf2 and conf3)):
-                    
-                    if not edit_by.strip():
-                        st.error("❌ Nama pelaksana tidak boleh kosong!")
-                    elif not edit_notes.strip():
-                        st.error("❌ Alasan edit harus diisi!")
+                if st.button("📤 PROSES PENGAMBILAN", use_container_width=True,
+                             key="btn_cari_ambil", disabled=not conf):
+                    if not amb_by.strip():
+                        st.error("Nama wajib!")
                     else:
-                        success, message = edit_inventory_item(
-                            selected_edit["id"],
-                            edit_new_qty,
-                            edit_new_price,
-                            edit_by.strip()
-                        )
-                        
+                        success, msg = kurangi_stok(amb_target["kardus_id"], sel_produk,
+                            amb_qty, amb_by.strip(), tipe="KELUAR",
+                            transfer_to=amb_target["owner_name"], notes=amb_notes)
                         if success:
-                            st.success(message)
-                            st.info(f"📝 Audit: {edit_notes}")
+                            st.success(msg)
+                            st.balloons()
                             time.sleep(1)
                             st.rerun()
                         else:
-                            st.error(message)
+                            st.error(msg)
             else:
-                st.info("❌ Tidak ada produk yang sesuai pencarian.")
+                st.info(f"📭 {sel_produk} tidak ada di gudang.")
         else:
-            st.warning("📭 Belum ada produk di gudang.")
+            st.warning("❌ Tidak ada produk match. Coba kata lain.")
+    else:
+        st.info("💡 Ketik beberapa huruf untuk mulai cari produk.")
 
-
-# ══════════════════════════════════════════════
-#  TAB 7: CARI BARANG
-# ══════════════════════════════════════════════
-with tab7:
-    st.markdown("### 🔍 Cari Barang di Gudang")
-    st.caption("Cari produk untuk lihat kardus mana saja yang memilikinya, dan langsung kurangi stok jika diambil.")
-
-    users = get_all_users()
-
-    st.markdown("#### 🔎 Cari Produk")
+# ════════════════════════════════════════════════════
+#  TAB: LAPORAN
+# ════════════════════════════════════════════════════
+with tab_laporan:
+    st.markdown("### 📊 Laporan & Riwayat")
     
-    # Search input dengan autocomplete
-    search_input = st.text_input(
-        "Ketik nama produk (contoh: h → akan muncul hemohim, hongsamdan, dll)",
-        placeholder="Contoh: HEMOHIM, Atomy HemoHim, atau huruf h..."
-    )
+    periode = st.radio("Periode:", ["📅 Minggu Ini", "📆 Bulan Ini", "📋 Semua"],
+                       horizontal=True, key="lap_p")
     
-    # Filter produk berdasarkan input
-    if search_input:
-        filtered_products = get_filtered_products(search_input)
+    now = datetime.now()
+    if periode == "📅 Minggu Ini":
+        start = now - timedelta(days=7)
+        label_p = "7 Hari Terakhir"
+    elif periode == "📆 Bulan Ini":
+        start = now.replace(day=1)
+        label_p = f"Bulan {now.strftime('%B %Y')}"
+    else:
+        start = datetime(2000, 1, 1)
+        label_p = "Semua Waktu"
+    
+    all_tx = load_table("transactions")
+    all_kr = load_table("kardus")
+    kardus_map = {str(k.get("id")): k for k in all_kr}
+    
+    # Enrich transactions
+    enriched = []
+    for t in all_tx:
+        t_copy = dict(t)
+        kid = str(t.get("kardus_id", ""))
+        if kid in kardus_map:
+            t_copy["kardus_label"] = kardus_map[kid].get("label", "")
+            t_copy["kardus_type"] = kardus_map[kid].get("type", "")
+        enriched.append(t_copy)
+    
+    filtered_tx = [t for t in enriched if parse_tgl(t.get("date", "")) >= start]
+    
+    masuk = [t for t in filtered_tx if t.get("type") == "MASUK"]
+    keluar = [t for t in filtered_tx if t.get("type") == "KELUAR"]
+    jual = [t for t in filtered_tx if t.get("type") == "PENJUALAN"]
+    
+    total_masuk = sum(int(t.get("qty", 0) or 0) for t in masuk)
+    total_keluar = sum(int(t.get("qty", 0) or 0) for t in keluar)
+    total_jual_qty = sum(int(t.get("qty", 0) or 0) for t in jual)
+    total_jual_rp = sum(float(t.get("price", 0) or 0) for t in jual)
+    
+    st.markdown(f"#### 📋 Ringkasan: {label_p}")
+    r1, r2, r3 = st.columns(3)
+    with r1: st.metric("📥 Masuk", f"{total_masuk} pcs")
+    with r2: st.metric("📤 Keluar", f"{total_keluar} pcs")
+    with r3: st.metric("💰 Penjualan", format_rupiah(total_jual_rp))
+    
+    if jual:
+        st.markdown("#### 🏆 5 Produk Terlaris")
+        from collections import Counter
+        cnt = Counter()
+        for t in jual:
+            cnt[t.get("product_name", "")] += int(t.get("qty", 0) or 0)
+        top5 = cnt.most_common(5)
+        st.dataframe(pd.DataFrame(top5, columns=["Produk", "Total Terjual"]),
+                     use_container_width=True, hide_index=True)
+    
+    st.markdown("---")
+    st.markdown("#### 📜 Riwayat Transaksi")
+    
+    fc1, fc2 = st.columns(2)
+    with fc1:
+        f_tipe = st.selectbox("Filter Tipe", ["Semua", "MASUK", "KELUAR", "PENJUALAN"], key="f_tipe")
+    with fc2:
+        s_tx = st.text_input("🔍 Cari produk/kardus", key="s_tx")
+    
+    disp = filtered_tx
+    if f_tipe != "Semua":
+        disp = [t for t in disp if t.get("type") == f_tipe]
+    if s_tx:
+        q = s_tx.lower()
+        disp = [t for t in disp if
+            q in str(t.get("product_name", "")).lower() or
+            q in str(t.get("kardus_label", "")).lower() or
+            q in str(t.get("buyer_name", "")).lower()]
+    
+    disp.sort(key=lambda x: int(x.get("id", 0) or 0), reverse=True)
+    
+    if disp:
+        df = pd.DataFrame(disp)
+        cols = ["date", "type", "kardus_label", "product_name", "qty", "price",
+                "buyer_name", "performed_by"]
+        cols = [c for c in cols if c in df.columns]
+        df = df[cols].copy()
+        df.columns = ["Tanggal", "Tipe", "Kardus", "Produk", "Qty", "Harga",
+                      "Pembeli", "Oleh"][:len(cols)]
+        st.dataframe(df, use_container_width=True, hide_index=True,
+            column_config={
+                "Harga": st.column_config.NumberColumn(format="Rp %d"),
+                "Qty": st.column_config.NumberColumn(format="%d pcs"),
+            })
         
-        if filtered_products:
-            selected_produk = st.selectbox(
-                "📦 Pilih produk dari list:",
-                filtered_products,
-                key="search_produk_select"
-            )
+        if st.button("📥 Export ke Excel", use_container_width=True):
+            buf = io.BytesIO()
+            with pd.ExcelWriter(buf, engine="openpyxl") as w:
+                df.to_excel(w, sheet_name="Riwayat", index=False)
+                pd.DataFrame({
+                    "Keterangan": ["Periode", "Total Masuk", "Total Keluar", "Total Penjualan"],
+                    "Nilai": [label_p, f"{total_masuk} pcs", f"{total_keluar} pcs",
+                              format_rupiah(total_jual_rp)],
+                }).to_excel(w, sheet_name="Ringkasan", index=False)
+            buf.seek(0)
+            st.download_button("📥 Download Excel", buf,
+                file_name=f"GudangKu_Laporan_{now.strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True)
+    else:
+        st.info("📭 Tidak ada transaksi.")
+    
+    # ─── EDIT PRODUK (Protected) ───
+    st.markdown("---")
+    with st.expander("⚙️ EDIT PRODUK (Protected — Hati-hati!)", expanded=False):
+        st.warning("⚠️ FITUR SENSITIF — Pastikan benar-benar yakin!")
+        
+        all_inv = load_table("inventory")
+        all_inv_enriched = []
+        for i in all_inv:
+            i_copy = dict(i)
+            kid = str(i.get("kardus_id", ""))
+            if kid in kardus_map:
+                i_copy["kardus_label"] = kardus_map[kid].get("label", "")
+                i_copy["owner_name"] = kardus_map[kid].get("owner_name", "")
+            all_inv_enriched.append(i_copy)
+        
+        if all_inv_enriched:
+            edit_search = st.text_input("🔍 Cari produk/kardus:", key="edit_s")
             
-            # Cari produk di semua kardus
-            search_results = search_produk_di_kardus(selected_produk)
+            if edit_search:
+                fil = [i for i in all_inv_enriched if
+                    edit_search.lower() in str(i.get("product_name", "")).lower() or
+                    edit_search.lower() in str(i.get("kardus_label", "")).lower()]
+            else:
+                fil = all_inv_enriched
             
-            if search_results:
-                st.markdown(f"#### 📍 **{selected_produk}** ditemukan di {len(search_results)} lokasi:")
+            if fil:
+                opts = [f"{i.get('product_name')} | Kardus: {i.get('kardus_label')} | Qty: {i.get('qty')}"
+                        for i in fil]
+                sel_e_str = st.selectbox("Pilih produk:", opts, key="edit_sel")
+                sel_e_idx = opts.index(sel_e_str)
+                sel_e = fil[sel_e_idx]
                 
-                # Tampilkan tabel hasil pencarian
-                df_search = pd.DataFrame(search_results)
-                df_display = df_search[[
-                    "kardus_label", "owner_name", "location", "kardus_type", "qty", "unit_price"
-                ]].copy()
-                df_display.columns = ["Kardus Label", "Pemilik", "📍 Lokasi", "Tipe", "Stok (pcs)", "Harga Satuan (Rp)"]
+                st.markdown(f"**Sekarang:** Qty `{sel_e.get('qty')}` | "
+                            f"Harga `Rp {int(float(sel_e.get('unit_price', 0) or 0)):,}`")
                 
-                st.dataframe(df_display, use_container_width=True, hide_index=True,
-                    column_config={
-                        "Stok (pcs)": st.column_config.NumberColumn(format="%d pcs"),
-                        "Harga Satuan (Rp)": st.column_config.NumberColumn(format="Rp %,.0f"),
-                    })
+                ec1, ec2 = st.columns(2)
+                with ec1:
+                    new_qty = st.number_input("Qty Baru", min_value=0,
+                        value=int(sel_e.get("qty", 0) or 0), key="edit_q")
+                with ec2:
+                    new_price = st.number_input("Harga Baru (Rp)", min_value=0,
+                        value=int(float(sel_e.get("unit_price", 0) or 0)), step=500, key="edit_p")
                 
-                st.markdown("---")
+                edit_by_opt = get_all_users() + ["Ketik nama baru..."]
+                edit_by_sel = st.selectbox("Oleh", edit_by_opt, key="edit_by")
+                edit_by = st.text_input("Nama:", key="edit_by_new") if edit_by_sel == "Ketik nama baru..." else edit_by_sel
+                edit_notes = st.text_area("Alasan edit (wajib):", height=60, key="edit_n")
                 
-                # ── Ambil Barang ──
-                st.markdown("#### 📤 Ambil Barang dari Salah Satu Kardus")
+                c1 = st.checkbox(f"✅ Saya yakin Qty {sel_e.get('qty')} → {new_qty}", key="ec1")
+                c2 = st.checkbox("✅ Tidak bisa dibatalkan, audit log tercatat", key="ec2")
+                c3 = st.checkbox("✅ Alasan sudah diisi", key="ec3")
                 
-                kardus_choices = [f"{r['kardus_label']} ({r['qty']} pcs)" for r in search_results]
-                selected_kardus_str = st.selectbox(
-                    "Pilih kardus mana yang mau diambil:",
-                    kardus_choices,
-                    key="search_ambil_kardus"
-                )
-                
-                selected_idx = kardus_choices.index(selected_kardus_str)
-                selected_result = search_results[selected_idx]
-                max_qty = selected_result["qty"]
-                
-                ambil_col1, ambil_col2 = st.columns(2)
-                with ambil_col1:
-                    ambil_qty = st.number_input(
-                        f"Jumlah yang diambil (maks: {max_qty} pcs):",
-                        min_value=1,
-                        max_value=max_qty,
-                        value=1,
-                        key="search_ambil_qty"
-                    )
-                
-                with ambil_col2:
-                    ambil_by_opt = users + ["Ketik nama baru..."]
-                    ambil_by_sel = st.selectbox("Dilakukan Oleh:", ambil_by_opt, key="search_ambil_by")
-                    if ambil_by_sel == "Ketik nama baru...":
-                        ambil_by = st.text_input("Nama Anda:", key="search_ambil_by_new")
+                if st.button("🔴 SUBMIT EDIT", use_container_width=True,
+                             disabled=not (c1 and c2 and c3), key="btn_edit_sbm"):
+                    if not edit_by.strip(): st.error("Nama wajib!")
+                    elif not edit_notes.strip(): st.error("Alasan wajib!")
                     else:
-                        ambil_by = ambil_by_sel
-                
-                ambil_notes = st.text_area("Catatan (opsional):", height=60, key="search_ambil_notes",
-                    placeholder="Contoh: Diambil untuk display, dijual ke pelanggan, dll")
-                
-                # Konfirmasi checkbox
-                confirm_ambil = st.checkbox(
-                    f"✅ Saya yakin ambil {ambil_qty} pcs {selected_produk} dari kardus {selected_result['kardus_label']}",
-                    key="search_confirm_ambil"
-                )
-                
-                if st.button("📤 PROSES PENGAMBILAN", use_container_width=True, key="btn_search_ambil",
-                             disabled=not confirm_ambil):
-                    if not ambil_by.strip():
-                        st.error("❌ Nama pelaksana tidak boleh kosong!")
-                    else:
-                        success, message = kurangi_stok_produk(
-                            selected_result["kardus_id"],
-                            selected_produk,
-                            ambil_qty,
-                            ambil_by.strip(),
-                            ambil_notes
-                        )
-                        
+                        success, msg = edit_inventory_item(sel_e["id"], new_qty, new_price,
+                                                           edit_by.strip(), edit_notes)
                         if success:
-                            st.success(message)
-                            st.balloons()
+                            st.success(msg)
+                            time.sleep(1)
                             st.rerun()
                         else:
-                            st.error(message)
+                            st.error(msg)
             else:
-                st.info(f"📭 Produk {selected_produk} tidak ada di gudang.")
+                st.info("Tidak ada match.")
         else:
-            st.warning(f"❌ Tidak ada produk yang mengandung '{search_input}'. Coba cari yang lain!")
-    else:
-        st.info("💡 **Caranya:** Ketik nama produk di atas untuk mulai mencari (bisa sebagian huruf saja)")
+            st.info("Belum ada produk.")
 
-
-# ══════════════════════════════════════════════
-#  TAB 6: PENGATURAN
-# ══════════════════════════════════════════════
-with tab6:
-    st.markdown("### ⚙️ Pengaturan & Info Aplikasi")
-
-    pg_col1, pg_col2 = st.columns(2)
-
-    with pg_col1:
-        # ── Daftar User ──
-        st.markdown("#### 👥 Pengguna yang Pernah Input")
-        all_users = get_all_users()
-        st.info(f"Ditemukan **{len(all_users)} pengguna**:")
-        for u in all_users:
+# ════════════════════════════════════════════════════
+#  TAB: PENGATURAN
+# ════════════════════════════════════════════════════
+with tab_setting:
+    st.markdown("### ⚙️ Pengaturan")
+    
+    st.success("☁️ **Database: Google Sheets** — Data permanen, tidak hilang lagi!")
+    
+    pg1, pg2 = st.columns(2)
+    
+    with pg1:
+        st.markdown("#### 👥 Pengguna")
+        users_l = get_all_users()
+        for u in users_l:
             st.markdown(f"- 👤 {u}")
-
+        
         st.markdown("---")
-
-        # ── Backup Database ──
-        st.markdown("#### 💾 Backup Data")
-        st.caption("Download file database untuk backup rutin.")
-        if st.button("📥  Download Backup Database (.db)", use_container_width=True,
-                     key="btn_backup"):
-            if os.path.exists(DB_PATH):
-                with open(DB_PATH, "rb") as f:
-                    db_bytes = f.read()
-                st.download_button(
-                    label=f"📥  Download gudangku_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.db",
-                    data=db_bytes,
-                    file_name=f"gudangku_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.db",
-                    mime="application/octet-stream",
-                    use_container_width=True
-                )
-            else:
-                st.error("File database tidak ditemukan!")
-
+        st.markdown("#### 🔄 Refresh Data")
+        st.caption("Klik kalau ada data terbaru dari user lain.")
+        if st.button("🔄  Refresh Sekarang", use_container_width=True):
+            clear_cache()
+            st.success("✅ Cache cleared!")
+            time.sleep(0.5)
+            st.rerun()
+        
         st.markdown("---")
-
-        # ── Import Database ──
-        st.markdown("#### 📤 Restore Data dari Backup")
-        st.caption("Kalau aplikasi di-reset karena idle, gunakan file backup untuk restore data.")
+        st.markdown("#### 📦 Migrate dari Backup .db")
+        st.caption("Import data dari file backup SQLite lama (.db) ke Google Sheets, lengkap dengan auto-normalisasi nama produk.")
         
-        uploaded_backup = st.file_uploader(
-            "Pilih file backup (.db) untuk di-import",
-            type=["db"],
-            key="import_backup"
-        )
-        
-        if uploaded_backup is not None:
-            st.warning("⚠️ Perhatian! Ini akan mengganti semua data sekarang dengan data dari backup.")
-            col_imp1, col_imp2 = st.columns(2)
-            with col_imp1:
-                if st.button("✅  Ya, IMPORT SEKARANG", use_container_width=True, key="btn_import_yes"):
-                    file_bytes = uploaded_backup.read()
-                    success, message = import_database(file_bytes)
-                    if success:
-                        st.success(message)
-                        st.rerun()
-                    else:
-                        st.error(message)
-            with col_imp2:
-                st.info("❌ Batal")
-
-        st.markdown("---")
-
-        # ── Import dari Excel ──
-        st.markdown("#### 📊 Import Data dari Excel")
-        st.caption("Jika sudah punya data di Excel, bisa langsung import ke sini!")
-        
-        # Download template
-        if st.button("📋  Download Template Excel Kosong", use_container_width=True,
-                     key="btn_template_excel"):
-            try:
-                # Generate template
-                output = io.BytesIO()
-                with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                    # Sheet 1: Kardus
-                    df_kardus = pd.DataFrame({
-                        "nomor_pesanan": ["4521", "4522", ""],
-                        "nomor_id": ["7789", "7790", ""],
-                        "owner_name": ["Titipan Anita", "Milik Saya - Budi", ""],
-                        "location": ["Rak A1", "Rak B2", ""],
-                        "type": ["Titipan", "Milik Sendiri", ""]
-                    })
-                    df_kardus.to_excel(writer, sheet_name="Kardus", index=False)
-                    
-                    # Sheet 2: Inventory
-                    df_inventory = pd.DataFrame({
-                        "kardus_id": ["1", "1", "2", ""],
-                        "product_name": ["Sabun Mandi", "Shampo", "Minyak Goreng", ""],
-                        "qty": ["10", "5", "8", ""],
-                        "unit_price": ["8000", "15000", "28000", ""]
-                    })
-                    df_inventory.to_excel(writer, sheet_name="Inventory", index=False)
-                    
-                    # Sheet 3: Transactions
-                    df_transactions = pd.DataFrame({
-                        "type": ["MASUK", "MASUK", "PENJUALAN", ""],
-                        "date": ["25 Apr 2026 10:00", "25 Apr 2026 11:00", "25 Apr 2026 14:30", ""],
-                        "kardus_id": ["1", "2", "2", ""],
-                        "product_name": ["Sabun Mandi", "Minyak Goreng", "Minyak Goreng", ""],
-                        "qty": ["10", "8", "2", ""],
-                        "price": ["0", "0", "56000", ""],
-                        "buyer_name": ["", "", "Pak Ali", ""],
-                        "performed_by": ["Admin", "Admin", "Admin", ""]
-                    })
-                    df_transactions.to_excel(writer, sheet_name="Transactions", index=False)
-                
-                output.seek(0)
-                st.download_button(
-                    label="📥  Download Template.xlsx",
-                    data=output.getvalue(),
-                    file_name=f"GudangKu_Template_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
-                )
-            except Exception as e:
-                st.error(f"❌ Error generate template: {str(e)}")
-        
-        st.caption("💡 **Caranya:**\n1. Download template di atas\n2. Isi dengan data kamu\n3. Upload file Excel di bawah")
-        
-        # Upload Excel
-        uploaded_excel = st.file_uploader(
-            "Upload file Excel (.xlsx) dengan data kamu",
-            type=["xlsx"],
-            key="upload_excel"
-        )
-        
-        if uploaded_excel is not None:
-            st.info("📝 Pilih sheet mana yang mau diimport:")
-            sheet_choice = st.radio(
-                "Sheet yang diimport:",
-                ["Kardus", "Inventory", "Transactions"],
-                horizontal=True,
-                key="sheet_choice"
-            )
-            
-            st.warning("⚠️ Data yang diimport akan **ditambahkan** ke aplikasi, bukan mengganti.")
-            
-            if st.button(f"✅  IMPORT DATA DARI SHEET '{sheet_choice}'", use_container_width=True,
-                         key="btn_import_excel"):
-                excel_bytes = uploaded_excel.read()
-                success, message = import_excel_data(excel_bytes, sheet_choice)
+        upload_db = st.file_uploader("Upload file .db lama", type=["db"], key="upload_db")
+        if upload_db:
+            normalize = st.checkbox("✅ Auto-normalisasi nama produk (rekomendasi)",
+                                     value=True, key="norm_db")
+            st.warning("⚠️ Ini akan MENGGANTI semua data Google Sheets dengan data dari .db!")
+            conf_db = st.checkbox("Saya yakin", key="conf_db")
+            if st.button("📤  IMPORT SEKARANG", use_container_width=True, disabled=not conf_db):
+                with st.spinner("Migrating..."):
+                    success, msg = import_sqlite_backup(upload_db.read(), normalize=normalize)
                 if success:
-                    st.success(message)
+                    st.success(msg)
+                    time.sleep(2)
                     st.rerun()
                 else:
-                    st.error(message)
-
-    with pg_col2:
-        # ── Info Versi ──
-        st.markdown("#### ℹ️ Info Aplikasi")
-        st.markdown("""
-        <div style="background:#f1f8e9; border-radius:10px; padding:16px 20px;">
-            <b>📦 GudangKu</b><br>
-            Versi: <b>1.0 (April 2026)</b><br>
-            Tech: <b>Python + Streamlit + SQLite</b><br>
-            Biaya Deploy: <b>Rp 0 (GRATIS!)</b>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("---")
-
-        # ── Reset Data ──
-        st.markdown("#### 🗑️ Reset Semua Data")
-        st.error("⚠️ BERBAHAYA! Ini akan menghapus SEMUA data dan tidak bisa dibatalkan!")
-        reset_confirm1 = st.checkbox("Saya mengerti data akan terhapus permanen", key="rst1")
-        reset_confirm2 = st.checkbox("Saya sudah backup data sebelumnya", key="rst2")
-        reset_text = st.text_input('Ketik "HAPUS SEMUA" untuk konfirmasi:', key="rst_text")
-
-        if st.button("🗑️  RESET SEMUA DATA", use_container_width=True, key="btn_reset",
-                     disabled=not (reset_confirm1 and reset_confirm2)):
-            if reset_text != "HAPUS SEMUA":
-                st.error("❌ Teks konfirmasi salah! Ketik persis: HAPUS SEMUA")
-            else:
-                conn = get_conn()
-                conn.execute("DELETE FROM transactions")
-                conn.execute("DELETE FROM inventory")
-                conn.execute("DELETE FROM kardus")
-                conn.execute("DELETE FROM audit_log")
-                try:
-                    conn.execute("DELETE FROM sqlite_sequence")
-                except:
-                    pass
-                conn.commit()
-                conn.close()
-                st.success("✅ Semua data berhasil dihapus! Aplikasi sekarang kosong dan siap dipakai.")
+                    st.error(msg)
+    
+    with pg2:
+        st.markdown("#### 🧹 Tool Merge Produk")
+        st.caption("Gabungkan nama produk yang typo/inkonsisten ke nama Atomy resmi. "
+                   "Misal: 'hemohim', 'HEMOHIM', 'Hemohim' → semuanya jadi 'Atomy HemoHim'.")
+        
+        # Preview produk yang akan ter-merge
+        all_inv_check = load_table("inventory")
+        unique_names = sorted(set(i.get("product_name", "") for i in all_inv_check))
+        
+        will_merge = []
+        for name in unique_names:
+            normalized = normalize_product_name(name)
+            if normalized != name:
+                will_merge.append((name, normalized))
+        
+        if will_merge:
+            st.info(f"📊 Ditemukan **{len(will_merge)} nama** yang bisa dinormalisasi.")
+            with st.expander("Lihat preview perubahan"):
+                for old, new in will_merge[:30]:
+                    st.markdown(f"- `{old}` → **{new}**")
+                if len(will_merge) > 30:
+                    st.caption(f"... dan {len(will_merge)-30} lainnya")
+            
+            conf_merge = st.checkbox("✅ Saya yakin merge & rename produk", key="conf_merge")
+            if st.button("🧹  JALANKAN MERGE", use_container_width=True, disabled=not conf_merge,
+                         key="btn_merge"):
+                with st.spinner("Merging..."):
+                    merged, renamed, tx_renamed = merge_duplicate_products()
+                st.success(f"✅ Selesai!\n- Merged: {merged} duplicate items\n"
+                           f"- Renamed: {renamed} inventory\n- Tx renamed: {tx_renamed}")
+                time.sleep(2)
                 st.rerun()
-
+        else:
+            st.success("✅ Semua nama produk sudah konsisten!")
+        
+        st.markdown("---")
+        
+        # Bulk Excel Import
+        st.markdown("#### 📥 Bulk Import dari Excel")
+        st.caption("Upload Excel dengan kardus + produk untuk import sekaligus.")
+        
+        # Template
+        if st.button("📋 Download Template Excel", use_container_width=True, key="btn_tpl"):
+            buf = io.BytesIO()
+            with pd.ExcelWriter(buf, engine="openpyxl") as w:
+                pd.DataFrame({
+                    "nomor_pesanan": ["4521", "4522"],
+                    "nomor_id": ["7789", "7790"],
+                    "owner_name": ["Titipan Anita", "Milik Saya - Budi"],
+                    "location": ["Rak A1", "Rak B2"],
+                    "type": ["Titipan", "Milik Sendiri"],
+                }).to_excel(w, sheet_name="Kardus", index=False)
+                pd.DataFrame({
+                    "kardus_label_or_id": ["4521-7789-Titipan Anita", "1"],
+                    "product_name": ["Atomy HemoHim", "Atomy Vitamin B-Complex"],
+                    "qty": [10, 5],
+                    "unit_price": [350000, 150000],
+                }).to_excel(w, sheet_name="Inventory", index=False)
+            buf.seek(0)
+            st.download_button("📥 Download", buf, file_name="GudangKu_Template.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True)
+        
+        upload_xlsx = st.file_uploader("Upload Excel (.xlsx)", type=["xlsx"], key="up_xlsx")
+        if upload_xlsx:
+            sheet_choice = st.radio("Sheet untuk diimport:", ["Kardus", "Inventory"],
+                                     horizontal=True, key="sheet_imp")
+            if st.button(f"✅ IMPORT '{sheet_choice}'", use_container_width=True, key="btn_imp_xlsx"):
+                try:
+                    df = pd.read_excel(upload_xlsx, sheet_name=sheet_choice)
+                    now_str = tgl_indo()
+                    inserted = 0
+                    errors = []
+                    
+                    if sheet_choice == "Kardus":
+                        kardus_to_insert = []
+                        for idx, row in df.iterrows():
+                            try:
+                                np = str(row.get("nomor_pesanan", "")).strip()
+                                ni = str(row.get("nomor_id", "")).strip()
+                                ow = str(row.get("owner_name", "")).strip()
+                                lc = str(row.get("location", "")).strip()
+                                tp = str(row.get("type", "Milik Sendiri")).strip()
+                                if not all([np, ni, ow, lc]):
+                                    errors.append(f"Baris {idx+2}: data tidak lengkap")
+                                    continue
+                                kardus_to_insert.append({
+                                    "label": f"{np}-{ni}-{ow}",
+                                    "nomor_pesanan": np, "nomor_id": ni, "owner_name": ow,
+                                    "location": lc, "type": tp,
+                                    "created_at": now_str, "created_by": "Excel Import",
+                                    "updated_at": now_str, "updated_by": "Excel Import",
+                                })
+                                inserted += 1
+                            except Exception as e:
+                                errors.append(f"Baris {idx+2}: {e}")
+                        if kardus_to_insert:
+                            insert_rows_batch("kardus", kardus_to_insert)
+                    
+                    elif sheet_choice == "Inventory":
+                        kardus_data = load_table("kardus")
+                        kardus_lookup = {}
+                        for k in kardus_data:
+                            kardus_lookup[str(k.get("id"))] = k.get("id")
+                            kardus_lookup[k.get("label", "")] = k.get("id")
+                        
+                        inv_to_insert = []
+                        for idx, row in df.iterrows():
+                            try:
+                                kref = str(row.get("kardus_label_or_id", "")).strip()
+                                pname = str(row.get("product_name", "")).strip()
+                                qty = int(row.get("qty", 0) or 0)
+                                price = float(row.get("unit_price", 0) or 0)
+                                
+                                if kref not in kardus_lookup:
+                                    errors.append(f"Baris {idx+2}: kardus '{kref}' tidak ada")
+                                    continue
+                                if not pname or qty <= 0:
+                                    errors.append(f"Baris {idx+2}: produk/qty invalid")
+                                    continue
+                                
+                                # Normalize nama
+                                pname = normalize_product_name(pname)
+                                
+                                inv_to_insert.append({
+                                    "kardus_id": kardus_lookup[kref],
+                                    "product_name": pname,
+                                    "qty": qty, "unit_price": price,
+                                    "added_at": now_str, "added_by": "Excel Import",
+                                })
+                                inserted += 1
+                            except Exception as e:
+                                errors.append(f"Baris {idx+2}: {e}")
+                        if inv_to_insert:
+                            insert_rows_batch("inventory", inv_to_insert)
+                    
+                    msg = f"✅ {inserted} baris berhasil"
+                    if errors:
+                        msg += f"\n⚠️ {len(errors)} error:\n" + "\n".join(errors[:5])
+                    st.success(msg)
+                    time.sleep(2)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Error: {e}")
+    
     st.markdown("---")
-
-    # ── Panduan Deploy ──
-    st.markdown("### 🚀 Cara Deploy Gratis di Streamlit Cloud (5 Menit!)")
-    with st.expander("📖 Klik untuk buka panduan lengkap"):
+    st.markdown("### 🚀 Setup Google Sheets (Sekali Saja)")
+    with st.expander("📖 Panduan Setup Google Sheets"):
         st.markdown("""
-## 🚀 Panduan Deploy GudangKu ke Internet (GRATIS!)
+**Sudah jalan? Berarti setup sudah benar! Tutup panduan ini.**
 
----
+**Belum setup? Ikuti langkah ini:**
 
-### Langkah 1: Buat Akun GitHub (1 menit)
-1. Buka **github.com** di browser
-2. Klik **Sign Up** dan daftar gratis
-3. Verifikasi email
+### 1. Buat Google Sheets (1 menit)
+- Buka [sheets.google.com](https://sheets.google.com)
+- Buat spreadsheet baru, beri nama **GudangKu Database**
+- Copy URL-nya (di address bar browser)
 
-### Langkah 2: Upload File ke GitHub (2 menit)
-1. Di GitHub, klik **New Repository** (tombol hijau)
-2. Nama repo: `gudangku` → klik **Create Repository**
-3. Klik **Add file** → **Upload files**
-4. Upload file **app.py** dan **requirements.txt** ini
-5. Klik **Commit changes**
+### 2. Setup Google Cloud (5 menit)
+- Buka [console.cloud.google.com](https://console.cloud.google.com)
+- **Create New Project** → nama: `gudangku`
+- Menu **APIs & Services** → **Library**:
+  - Search **Google Sheets API** → klik **Enable**
+  - Search **Google Drive API** → klik **Enable**
+- Menu **APIs & Services** → **Credentials**
+- Klik **+ Create Credentials** → **Service Account**
+  - Name: `gudangku-bot` → Create → Done
+- Klik service account yang baru dibuat → tab **Keys**
+  - **Add Key** → **Create New Key** → JSON → Create
+  - File JSON otomatis terdownload
 
-### Langkah 3: Deploy di Streamlit Cloud (2 menit)
-1. Buka **share.streamlit.io**
-2. Login dengan akun GitHub kamu
-3. Klik **New app**
-4. Pilih repository `gudangku`
-5. Main file: `app.py`
-6. Klik **Deploy!**
+### 3. Share Spreadsheet ke Service Account
+- Buka file JSON, cari email seperti `gudangku-bot@xxx.iam.gserviceaccount.com`
+- Buka Google Sheets `GudangKu Database`
+- Klik **Share** → paste email service account → **Editor** → Send
 
-### Langkah 4: Share Link ke Semua Orang! 🎉
-- Kamu akan dapat link seperti: `https://namaKamu-gudangku.streamlit.app`
-- Share link itu ke semua rekan yang butuh akses!
+### 4. Upload Credentials ke Streamlit
+- Buka [share.streamlit.io](https://share.streamlit.io)
+- Klik aplikasimu → **Settings** → **Secrets**
+- Paste isi seperti ini:
 
----
+```toml
+spreadsheet_url = "URL_GOOGLE_SHEETS_DI_SINI"
 
-### 💾 Cara Backup Rutin
-1. Buka tab **⚙️ Pengaturan** di atas
-2. Klik tombol **Download Backup Database**
-3. Simpan file **.db** di HP/Laptop kamu
-4. Lakukan tiap minggu untuk keamanan data
+[gcp_service_account]
+type = "service_account"
+project_id = "..."
+private_key_id = "..."
+private_key = "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n"
+client_email = "gudangku-bot@...iam.gserviceaccount.com"
+client_id = "..."
+auth_uri = "https://accounts.google.com/o/oauth2/auth"
+token_uri = "https://oauth2.googleapis.com/token"
+auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
+client_x509_cert_url = "..."
+```
 
----
+(Copy isinya dari file JSON yang didownload tadi)
 
-### 📞 Butuh Bantuan?
-- Email: support@gudangku.app
-- Dokumentasi Streamlit: docs.streamlit.io
-        """)
+- Klik **Save**
+- Aplikasi auto-restart
 
+### 5. Selesai!
+Aplikasimu sekarang pakai Google Sheets sebagai database. Data permanen!
+""")
 
-# ─────────────────────────────────────────────
-#  FOOTER
-# ─────────────────────────────────────────────
+# Footer
 st.markdown("---")
 st.markdown("""
-<div style="text-align:center; color:#888; font-size:15px; padding:12px;">
-    📦 <b>GudangKu v1.0</b> — Kelola Kardus & Penjualan dengan Mudah |
-    Dibuat dengan ❤️ menggunakan Streamlit + SQLite |
-    Deploy GRATIS di Streamlit Cloud
+<div style="text-align:center; color:#888; font-size:14px; padding:10px;">
+📦 <b>GudangKu v2.0 Atomy</b> | Database: Google Sheets ☁️ | Dibuat dengan Streamlit
 </div>
 """, unsafe_allow_html=True)
