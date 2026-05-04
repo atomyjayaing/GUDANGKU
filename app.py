@@ -437,12 +437,6 @@ def get_worksheet(name):
     }
     try:
         ws = sh.worksheet(name)
-        # Pastikan header ada
-        existing_headers = ws.row_values(1)
-        expected = headers_map.get(name, [])
-        if not existing_headers or existing_headers[:len(expected)] != expected:
-            ws.clear()
-            ws.append_row(expected)
         return ws
     except gspread.WorksheetNotFound:
         ws = sh.add_worksheet(title=name, rows=1000, cols=20)
@@ -450,24 +444,82 @@ def get_worksheet(name):
         return ws
 
 def init_sheets():
-    """Pastikan semua worksheet ada"""
-    for name in ["kardus", "inventory", "transactions", "audit_log"]:
-        get_worksheet(name)
+    """Pastikan semua worksheet ada (1x saat first run)"""
+    if "sheets_initialized" in st.session_state:
+        return
+    sh = get_spreadsheet()
+    headers_map = {
+        "kardus": KARDUS_HEADERS,
+        "inventory": INVENTORY_HEADERS,
+        "transactions": TRANSACTIONS_HEADERS,
+        "audit_log": AUDIT_HEADERS,
+    }
+    existing_sheets = [ws.title for ws in sh.worksheets()]
+    for name, headers in headers_map.items():
+        if name not in existing_sheets:
+            ws = sh.add_worksheet(title=name, rows=1000, cols=20)
+            ws.append_row(headers)
+        else:
+            ws = sh.worksheet(name)
+            existing = ws.row_values(1)
+            if not existing or existing[:len(headers)] != headers:
+                ws.clear()
+                ws.append_row(headers)
+    st.session_state.sheets_initialized = True
 
 # ═════════════════════════════════════════════════
-#  CRUD FUNCTIONS via Google Sheets
+#  CRUD FUNCTIONS via Google Sheets (dengan retry & long cache)
 # ═════════════════════════════════════════════════
 
-@st.cache_data(ttl=10)
+def _retry_on_rate_limit(func, max_retries=3, initial_delay=2):
+    """Retry function jika kena rate limit (429) dengan exponential backoff"""
+    import gspread.exceptions
+    delay = initial_delay
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except gspread.exceptions.APIError as e:
+            err_str = str(e).lower()
+            if "429" in err_str or "rate" in err_str or "quota" in err_str:
+                if attempt < max_retries - 1:
+                    time.sleep(delay)
+                    delay *= 2
+                    continue
+            raise
+        except Exception as e:
+            err_str = str(e).lower()
+            if "429" in err_str or "rate" in err_str or "quota" in err_str:
+                if attempt < max_retries - 1:
+                    time.sleep(delay)
+                    delay *= 2
+                    continue
+            raise
+    return func()
+
+@st.cache_data(ttl=120, show_spinner=False)
+def _load_table_cached(table_name):
+    """Internal cached loader dengan retry"""
+    def _load():
+        ws = get_worksheet(table_name)
+        return ws.get_all_records()
+    return _retry_on_rate_limit(_load)
+
 def load_table(table_name):
-    """Load semua data dari worksheet sebagai list of dicts"""
-    ws = get_worksheet(table_name)
-    records = ws.get_all_records()
-    return records
+    """Load semua data dari worksheet sebagai list of dicts (cached 2 menit)"""
+    try:
+        return _load_table_cached(table_name)
+    except Exception as e:
+        err_str = str(e).lower()
+        if "429" in err_str or "quota" in err_str:
+            st.warning("⏳ Google Sheets rate limit. Tunggu 30 detik dan refresh halaman...")
+            st.stop()
+        else:
+            st.error(f"❌ Error load data: {e}")
+            st.stop()
 
 def clear_cache():
     """Clear cache supaya next load fetch fresh data"""
-    load_table.clear()
+    _load_table_cached.clear()
 
 def get_next_id(table_name):
     """Generate next ID berdasarkan max existing ID"""
@@ -479,7 +531,6 @@ def get_next_id(table_name):
 
 def insert_row(table_name, data):
     """Insert satu baris ke worksheet"""
-    ws = get_worksheet(table_name)
     headers_map = {
         "kardus": KARDUS_HEADERS,
         "inventory": INVENTORY_HEADERS,
@@ -490,7 +541,11 @@ def insert_row(table_name, data):
     if "id" not in data or not data.get("id"):
         data["id"] = get_next_id(table_name)
     row = [str(data.get(h, "")) for h in headers]
-    ws.append_row(row)
+    
+    def _do():
+        ws = get_worksheet(table_name)
+        ws.append_row(row)
+    _retry_on_rate_limit(_do)
     clear_cache()
     return data["id"]
 
@@ -498,7 +553,6 @@ def insert_rows_batch(table_name, data_list):
     """Insert banyak baris sekaligus (BATCH - jauh lebih cepat)"""
     if not data_list:
         return []
-    ws = get_worksheet(table_name)
     headers_map = {
         "kardus": KARDUS_HEADERS,
         "inventory": INVENTORY_HEADERS,
@@ -516,14 +570,17 @@ def insert_rows_batch(table_name, data_list):
         row = [str(d.get(h, "")) for h in headers]
         rows_to_insert.append(row)
         inserted_ids.append(d["id"])
-    ws.append_rows(rows_to_insert)
+    
+    def _do():
+        ws = get_worksheet(table_name)
+        ws.append_rows(rows_to_insert)
+    _retry_on_rate_limit(_do)
     clear_cache()
     return inserted_ids
 
 def update_row(table_name, row_id, updates):
     """Update baris berdasarkan id"""
-    ws = get_worksheet(table_name)
-    all_data = ws.get_all_records()
+    all_data = load_table(table_name)
     headers_map = {
         "kardus": KARDUS_HEADERS,
         "inventory": INVENTORY_HEADERS,
@@ -533,23 +590,30 @@ def update_row(table_name, row_id, updates):
     headers = headers_map[table_name]
     for idx, row in enumerate(all_data):
         if str(row.get("id")) == str(row_id):
-            row_num = idx + 2  # +2 karena header di row 1, dan idx 0-based
+            row_num = idx + 2
             new_row = dict(row)
             new_row.update(updates)
             updated_values = [str(new_row.get(h, "")) for h in headers]
-            ws.update(f"A{row_num}:{chr(65+len(headers)-1)}{row_num}", [updated_values])
+            
+            def _do():
+                ws = get_worksheet(table_name)
+                ws.update(f"A{row_num}:{chr(65+len(headers)-1)}{row_num}", [updated_values])
+            _retry_on_rate_limit(_do)
             clear_cache()
             return True
     return False
 
 def delete_row(table_name, row_id):
     """Hapus baris berdasarkan id"""
-    ws = get_worksheet(table_name)
-    all_data = ws.get_all_records()
+    all_data = load_table(table_name)
     for idx, row in enumerate(all_data):
         if str(row.get("id")) == str(row_id):
             row_num = idx + 2
-            ws.delete_rows(row_num)
+            
+            def _do():
+                ws = get_worksheet(table_name)
+                ws.delete_rows(row_num)
+            _retry_on_rate_limit(_do)
             clear_cache()
             return True
     return False
@@ -804,6 +868,18 @@ def edit_inventory_item(inv_id, new_qty, new_price, performed_by, notes=""):
           {"qty": new_qty, "price": new_price, "notes": notes}, performed_by)
     return True, "✅ Berhasil diupdate"
 
+def _insert_in_chunks(table_name, data_list, chunk_size=100):
+    """Insert dalam chunks supaya tidak timeout"""
+    inserted_ids = []
+    for i in range(0, len(data_list), chunk_size):
+        chunk = data_list[i:i+chunk_size]
+        ids = insert_rows_batch(table_name, chunk)
+        inserted_ids.extend(ids)
+        # Small delay antara chunk untuk avoid rate limit
+        if i + chunk_size < len(data_list):
+            time.sleep(1.5)
+    return inserted_ids
+
 # ═════════════════════════════════════════════════
 #  IMPORT BACKUP DARI SQLite (.db) → Google Sheets
 # ═════════════════════════════════════════════════
@@ -828,10 +904,17 @@ def import_sqlite_backup(uploaded_bytes, normalize=True, performed_by="Admin"):
                 conn.close()
                 return False, f"Tabel '{tbl}' tidak ada di backup"
         
+        progress_text = st.empty()
+        
         # Bersihkan worksheets dulu
+        progress_text.info("⏳ Membersihkan Google Sheets lama...")
+        sh = get_spreadsheet()
         for name in ["kardus", "inventory", "transactions", "audit_log"]:
-            ws = get_worksheet(name)
-            ws.clear()
+            try:
+                ws = sh.worksheet(name)
+                ws.clear()
+            except gspread.WorksheetNotFound:
+                ws = sh.add_worksheet(title=name, rows=1000, cols=20)
             headers_map = {
                 "kardus": KARDUS_HEADERS,
                 "inventory": INVENTORY_HEADERS,
@@ -839,8 +922,12 @@ def import_sqlite_backup(uploaded_bytes, normalize=True, performed_by="Admin"):
                 "audit_log": AUDIT_HEADERS,
             }
             ws.append_row(headers_map[name])
+            time.sleep(1)
+        
+        clear_cache()
         
         # Migrate kardus
+        progress_text.info("⏳ Migrasi kardus...")
         kardus_rows = c.execute("SELECT * FROM kardus").fetchall()
         kardus_data = []
         for k in kardus_rows:
@@ -858,9 +945,10 @@ def import_sqlite_backup(uploaded_bytes, normalize=True, performed_by="Admin"):
                 "updated_by": k["updated_by"],
             })
         if kardus_data:
-            insert_rows_batch("kardus", kardus_data)
+            _insert_in_chunks("kardus", kardus_data, chunk_size=200)
+            progress_text.info(f"✅ Kardus: {len(kardus_data)} baris. Lanjut inventory...")
         
-        # Migrate inventory dengan auto-normalize
+        # Migrate inventory
         inv_rows = c.execute("SELECT * FROM inventory").fetchall()
         inv_data = []
         normalized_count = 0
@@ -879,9 +967,10 @@ def import_sqlite_backup(uploaded_bytes, normalize=True, performed_by="Admin"):
                 "added_by": i["added_by"],
             })
         if inv_data:
-            insert_rows_batch("inventory", inv_data)
+            _insert_in_chunks("inventory", inv_data, chunk_size=200)
+            progress_text.info(f"✅ Inventory: {len(inv_data)} baris. Lanjut transactions...")
         
-        # Migrate transactions dengan auto-normalize
+        # Migrate transactions
         tx_rows = c.execute("SELECT * FROM transactions").fetchall()
         tx_data = []
         for t in tx_rows:
@@ -902,15 +991,19 @@ def import_sqlite_backup(uploaded_bytes, normalize=True, performed_by="Admin"):
                 "notes": t["notes"],
             })
         if tx_data:
-            insert_rows_batch("transactions", tx_data)
+            _insert_in_chunks("transactions", tx_data, chunk_size=200)
+        
+        progress_text.empty()
         
         conn.close()
         os.unlink(tmp_path)
+        clear_cache()
         
         return True, (f"✅ Migrasi selesai!\n"
                       f"- Kardus: {len(kardus_data)} baris\n"
                       f"- Inventory: {len(inv_data)} baris ({normalized_count} produk dinormalisasi)\n"
-                      f"- Transactions: {len(tx_data)} baris")
+                      f"- Transactions: {len(tx_data)} baris\n\n"
+                      f"💡 Tunggu 30 detik lalu refresh halaman supaya cache update.")
     except Exception as e:
         return False, f"❌ Error: {str(e)}"
 
