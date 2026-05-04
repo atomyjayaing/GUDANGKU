@@ -144,61 +144,221 @@ hr { border-color: #e8f5e9 !important; margin: 20px 0 !important; }
 """, unsafe_allow_html=True)
 
 # ═════════════════════════════════════════════════
-#  LIST PRODUK ATOMY (102 Master List)
+#  LIST PRODUK ATOMY INDONESIA (Default Master List)
+#  Bisa di-override via Google Sheets sheet "master_products"
+#  Source: id.atomy.com + global Atomy yang umum di Indonesia
 # ═════════════════════════════════════════════════
-ATOMY_PRODUCTS = [
-    "Atomy Absolute Ampoule", "Atomy Absolute CellActive Skincare Set",
-    "Atomy Absolute Eye-complex", "Atomy Absolute Lotion",
-    "Atomy Absolute Nutrition Cream", "Atomy Absolute Serum",
-    "Atomy Absolute Toner", "Atomy AC Special Set",
-    "Atomy Adelica Lip Gloss", "Atomy Adelica Loose Powder",
-    "Atomy Adelica Master Fit Cushion", "Atomy Aidam Cleanser",
-    "Atomy Alaska E-Omega 3", "Atomy Apple Phenon",
-    "Atomy Baby Body Wash & Shampoo", "Atomy Baby Care Set",
-    "Atomy Baby Lotion", "Atomy BB Cream",
-    "Atomy Body Cleanser", "Atomy Body Lotion",
-    "Atomy Cafe Arabica", "Atomy Cafe Arabica Black",
-    "Atomy Color Food Vitamin C", "Atomy Daily Expert Mask",
-    "Atomy Deep Cleanser 150ml", "Atomy Dish Detergent",
-    "Atomy Evening Care 4 Set", "Atomy Eye Lutein",
-    "Atomy Fabric Detergent Powder", "Atomy Fabric Softener",
-    "Atomy Foam Cleanser 150ml", "Atomy Gift Set Atomy",
-    "Atomy Grilled Laver", "Atomy Hampers Lebaran Eksklusif",
-    "Atomy Hampers Lebaran Gold", "Atomy Hampers Lebaran Silver",
-    "Atomy Hand Soap", "Atomy HemoHim",
-    "Atomy HemoHim Set 4", "Atomy Herbal Hair Conditioner",
-    "Atomy Herbal Hair Shampoo", "Atomy Herbal Hair Tonic",
-    "Atomy Hongsamdan Red Ginseng", "Atomy Hydra Brightening Care Set",
-    "Atomy Hydra Brightening Cream", "Atomy Hydra Brightening Essence",
-    "Atomy Kids Chewable Omega-3", "Atomy Kitchen Cloth",
-    "Atomy Lip Glow", "Atomy Lip Treatment",
-    "Atomy Liquid Fabric Detergent", "Atomy Marine Ampoule Gel Mask",
-    "Atomy Men Skincare Set", "Atomy Mild Bubble Cleanser",
-    "Atomy Milk Thistle Rhodiola", "Atomy Olive Oil Grilled Laver",
-    "Atomy Oral Care System", "Atomy Organic Green Tea",
-    "Atomy Paket Berkah Ramadan A", "Atomy Paket Berkah Ramadan B",
-    "Atomy Paket Berkah Ramadan C", "Atomy Paket Bingkisan Lebaran",
-    "Atomy Paket Glow Up Lebaran", "Atomy Paket Hampers Hari Raya",
-    "Atomy Paket Hemat Keluarga", "Atomy Paket Idul Fitri Sehat",
-    "Atomy Paket Kecantikan Lebaran", "Atomy Paket Lebaran A (Health Care)",
-    "Atomy Paket Lebaran B (Skincare)", "Atomy Paket Lebaran C (Personal Care)",
-    "Atomy Paket Ramadhan Care", "Atomy Paket Sehat Ramadhan",
-    "Atomy Paket Suplemen Lebaran", "Atomy Parcel Hari Raya Idul Fitri",
-    "Atomy Parcel Lebaran Atomy", "Atomy Peel Off Mask",
-    "Atomy Peeling Gel", "Atomy Pomegranate Beauty",
-    "Atomy Potato Ramen", "Atomy Probiotics 10+",
-    "Atomy Pure Spirulina", "Atomy Pu'er Tea",
-    "Atomy Scalpcare Conditioner", "Atomy Scalpcare Hair Care Set",
-    "Atomy Scalpcare Shampoo", "Atomy Slim Body Shake 2.0",
-    "Atomy Stainless Steel Scrubber", "Atomy Sun Stick",
-    "Atomy Sunscreen Beige", "Atomy Sunscreen White",
-    "Atomy The Fame Essence", "Atomy The Fame Eye Cream",
-    "Atomy The Fame Lotion", "Atomy The Fame Nutrition Cream",
-    "Atomy The Fame Set", "Atomy The Fame Toner",
-    "Atomy Toothbrush", "Atomy Toothbrush Compact",
-    "Atomy Toothpaste 200g", "Atomy Toothpaste 50g",
-    "Atomy Travel Kit", "Atomy Vitamin B-Complex",
+ATOMY_PRODUCTS_DEFAULT = [
+    # ─── HEMOHIM (produk andalan) ───
+    "Atomy HemoHim",
+    "Atomy HemoHim G",
+    "Atomy HemoHim Set 4",
+    "Atomy HemoHim 4 Sets",
+    "Atomy HemoHim Travel Pack",
+    
+    # ─── HEALTH CARE & SUPLEMEN ───
+    "Atomy Hongsamdan Red Ginseng",
+    "Atomy Korean Red Ginseng Jelly Stick",
+    "Atomy Probiotics 10+",
+    "Atomy Probiotics Plus",
+    "Atomy Finezyme",
+    "Atomy Color Food Vitamin C",
+    "Atomy Vitamin C 550mg",
+    "Atomy Vitamin C 1000mg",
+    "Atomy Vitamin B-Complex",
+    "Atomy Alaska E-Omega 3",
+    "Atomy Eye Lutein",
+    "Atomy Eye Health Luaxanthin",
+    "Atomy Premium Lutein 30",
+    "Atomy Apple Phenon",
+    "Atomy Applephenon Jelly Stick",
+    "Atomy Pure Spirulina",
+    "Atomy Pomegranate Beauty",
+    "Atomy Pomegranate Mixed Fruit Jelly",
+    "Atomy Milk Thistle Rhodiola",
+    "Atomy Rhodiola Sachalinensis & Milk Thistle",
+    "Atomy Sophora Queen",
+    "Atomy Saw Palmetto",
+    "Atomy Plant Calcium",
+    "Atomy Iron",
+    "Atomy Smart Memory Up",
+    "Atomy Skinbet Collagen",
+    "Atomy Inner Collagen",
+    "Atomy Psyllium Husk",
+    "Atomy Kids Chewable Omega-3",
+    "Atomy Kids Vitamin & Mineral Gummies",
+    "Atomy Tiger Milk Mushroom Powder",
+    "Atomy Bird's Nest Drink",
+    "Atomy Power Vita-Energy",
+    "Atomy Slim Body Shake 2.0",
+    "Atomy Balance Life",
+    "Atomy Banaba 4 in 1",
+    "Atomy Easy-Enjoy Coconut Avocado",
+    "Atomy Green Propolis Spray",
+    "Atomy Organic Fermented Noni Concentrate",
+    
+    # ─── BEAUTY - SKINCARE ABSOLUTE ───
+    "Atomy Absolute CellActive Skincare Set",
+    "Atomy Absolute CellActive Toner",
+    "Atomy Absolute CellActive Lotion",
+    "Atomy Absolute CellActive Ampoule",
+    "Atomy Absolute CellActive Serum",
+    "Atomy Absolute CellActive Nutrition Cream",
+    "Atomy Absolute CellActive Eye Cream",
+    "Atomy Absolute Selective Eye Complex",
+    "Atomy Absolute Snow Tone-Up Essence Sun",
+    "Atomy Absolute Essence Sunscreen",
+    
+    # ─── BEAUTY - SKINCARE THE FAME ───
+    "Atomy The Fame Set",
+    "Atomy The Fame Toner",
+    "Atomy The Fame Lotion",
+    "Atomy The Fame Essence",
+    "Atomy The Fame Eye Cream",
+    "Atomy The Fame Nutrition Cream",
+    
+    # ─── BEAUTY - EVENING CARE 4 SET ───
+    "Atomy Evening Care 4 Set",
+    "Atomy Evening Care Foam Cleanser",
+    "Atomy Evening Care Deep Cleanser",
+    "Atomy Evening Care Peel-Off Mask",
+    "Atomy Evening Care Peeling Gel",
+    
+    # ─── BEAUTY - SKINCARE LAINNYA ───
+    "Atomy Foam Cleanser 150ml",
+    "Atomy Deep Cleanser 150ml",
+    "Atomy Mild Bubble Cleanser",
+    "Atomy Hydra Brightening Care Set",
+    "Atomy Hydra Brightening Toner",
+    "Atomy Hydra Brightening Essence",
+    "Atomy Hydra Brightening Cream",
+    "Atomy AC (Acne Clear) Special Set",
+    "Atomy Acne Clear Expert System",
+    "Atomy Derma Real Cica",
+    "Atomy Deep Pure Cleansing Oil",
+    "Atomy Marine Ampoule Gel Mask",
+    "Atomy Daily Expert Mask",
+    "Atomy 7 Solution Gel Mask",
+    "Atomy 3 Seconds Beauty Water",
+    "Atomy Rose Rain Mist",
+    "Atomy Synergy Ampoule",
+    "Atomy Sunscreen Beige",
+    "Atomy Sunscreen White",
+    "Atomy Sun Stick",
+    "Atomy Homme Skincare Set",
+    "Atomy Homme Energizing All-in-One",
+    "Atomy Men Skincare Set",
+    
+    # ─── BEAUTY - MAKE UP ───
+    "Atomy BB Cream",
+    "Atomy Healthy Glow Base",
+    "Atomy Mineral Pact",
+    "Atomy Lash Power Mascara",
+    "Atomy Lip Glow",
+    "Atomy Lip Treatment",
+    "Atomy Adelica Lip Gloss",
+    "Atomy Adelica Loose Setting Powder",
+    "Atomy Adelica Master Fit Cushion",
+    
+    # ─── HAIR CARE ───
+    "Atomy Herbal Hair Shampoo",
+    "Atomy Herbal Hair Conditioner",
+    "Atomy Herbal Hair Tonic",
+    "Atomy Saengmodan Hair Tonic",
+    "Atomy Hair Vital Shampoo",
+    "Atomy Scalpcare Shampoo",
+    "Atomy Scalpcare Conditioner",
+    "Atomy Scalpcare Hair Care Set",
+    "Atomy Hair Essential Oil",
+    "Atomy Protein Intensive Hair Mask",
+    "Atomy Absolute Hair Series Set",
+    
+    # ─── BODY CARE ───
+    "Atomy Body Cleanser",
+    "Atomy Herbal Body Cleanser",
+    "Atomy Body Lotion",
+    "Atomy Body Care Aidam Cleanser",
+    "Atomy Aidam Cleanser",
+    "Atomy Hand Soap",
+    "Atomy Hand Cream",
+    "Atomy Herb Day Feminine",
+    
+    # ─── BABY / KIDS ───
+    "Atomy Cerabebe Baby Lotion",
+    "Atomy Cerabebe Baby Body Wash & Shampoo",
+    "Atomy Baby Care Set",
+    "Atomy Baby Lotion",
+    "Atomy Baby Body Wash & Shampoo",
+    
+    # ─── ORAL CARE ───
+    "Atomy Propolis Toothpaste 200g",
+    "Atomy Propolis Toothpaste 50g",
+    "Atomy Toothbrush",
+    "Atomy Toothbrush Compact",
+    "Atomy Oral Care System",
+    
+    # ─── ETHEREAL OIL / KOYO ───
+    "Atomy Ethereal Oil Patch",
+    
+    # ─── HOME / LIVING ───
+    "Atomy Liquid Detergent",
+    "Atomy Fabric Detergent Powder",
+    "Atomy Fabric Softener",
+    "Atomy Dish Detergent",
+    "Atomy Kitchen Cloth",
+    "Atomy Stainless Steel Scrubber",
+    "Atomy MediCook Wok 5.4L",
+    "Atomy Non-Medical Mask",
+    "Atomy PTFE Mask",
+    
+    # ─── FOOD & BEVERAGE ───
+    "Atomy Cafe Arabica",
+    "Atomy Cafe Arabica 50 Sticks",
+    "Atomy Cafe Arabica Black",
+    "Atomy Pu'er Tea",
+    "Atomy Organic Green Tea",
+    "Atomy Potato Ramen",
+    "Atomy Potato Cup Ramen",
+    "Atomy Sandwich Laver",
+    "Atomy Grilled Laver",
+    "Atomy Olive Oil Grilled Laver",
+    "Atomy Organic Olive Oil",
+    "Atomy Avocare Avocado Oil",
+    "Atomy Kampot Black Peppers",
+    "Atomy Organic Black Chia Seed",
+    "Atomy Himalayan Pink Salt",
+    "Atomy Organic Oatmeal",
+    
+    # ─── PAKET / HAMPERS ───
+    "Atomy Promo Ramadhan 1",
+    "Atomy Promo Ramadhan 2",
+    "Atomy Paket Berkah Ramadan A",
+    "Atomy Paket Berkah Ramadan B",
+    "Atomy Paket Berkah Ramadan C",
+    "Atomy Paket Ramadhan Care",
+    "Atomy Paket Sehat Ramadhan",
+    "Atomy Paket Bingkisan Lebaran",
+    "Atomy Paket Glow Up Lebaran",
+    "Atomy Paket Hampers Hari Raya",
+    "Atomy Paket Hemat Keluarga",
+    "Atomy Paket Idul Fitri Sehat",
+    "Atomy Paket Kecantikan Lebaran",
+    "Atomy Paket Lebaran A (Health Care)",
+    "Atomy Paket Lebaran B (Skincare)",
+    "Atomy Paket Lebaran C (Personal Care)",
+    "Atomy Paket Suplemen Lebaran",
+    "Atomy Parcel Hari Raya Idul Fitri",
+    "Atomy Parcel Lebaran Atomy",
+    "Atomy Hampers Lebaran Eksklusif",
+    "Atomy Hampers Lebaran Gold",
+    "Atomy Hampers Lebaran Silver",
+    "Atomy Gift Set",
+    "Atomy Travel Kit",
+    "Atomy Shopping Bag",
 ]
+
+# Default list — bisa di-override dari Google Sheets
+ATOMY_PRODUCTS = ATOMY_PRODUCTS_DEFAULT.copy()
 
 # ═════════════════════════════════════════════════
 #  AUTO-MAPPING: nama lama → nama Atomy resmi
@@ -210,7 +370,7 @@ PRODUCT_MERGE_MAP = {
     "Hemohim": "Atomy HemoHim",
     "hemohim": "Atomy HemoHim",
     "HEMOHIM 1": "Atomy HemoHim",
-    "HEMOHIM 1 SET": "Atomy HemoHim Set 4",
+    "HEMOHIM 1 SET": "Atomy HemoHim",  # 1 box biasa, bukan 4 sets
     
     # Body Lotion variants
     "BODY LOTION": "Atomy Body Lotion",
@@ -271,12 +431,12 @@ PRODUCT_MERGE_MAP = {
     "ATOMY HERBAL HAIR SHAMPOO": "Atomy Herbal Hair Shampoo",
     "herbal hair sampoo": "Atomy Herbal Hair Shampoo",
     "HAIR TONIC": "Atomy Herbal Hair Tonic",
-    "SAENGMODAN HAIR TONIC": "Atomy Herbal Hair Tonic",
-    "saengmodan hair tonic": "Atomy Herbal Hair Tonic",
-    "HAIR ESSENTIAL OIL": "Atomy Herbal Hair Tonic",
-    "HAIR ESSENTIALS OIL": "Atomy Herbal Hair Tonic",
-    "ATOMY HAIR ESSENTIAL OIL": "Atomy Herbal Hair Tonic",
-    "hair essential oil": "Atomy Herbal Hair Tonic",
+    "SAENGMODAN HAIR TONIC": "Atomy Saengmodan Hair Tonic",
+    "saengmodan hair tonic": "Atomy Saengmodan Hair Tonic",
+    "HAIR ESSENTIAL OIL": "Atomy Hair Essential Oil",
+    "HAIR ESSENTIALS OIL": "Atomy Hair Essential Oil",
+    "ATOMY HAIR ESSENTIAL OIL": "Atomy Hair Essential Oil",
+    "hair essential oil": "Atomy Hair Essential Oil",
     
     # Vitamin C
     "VIT C": "Atomy Color Food Vitamin C",
@@ -299,13 +459,13 @@ PRODUCT_MERGE_MAP = {
     "SUNSCREEN WHITE": "Atomy Sunscreen White",
     "sunscreen white": "Atomy Sunscreen White",
     
-    # Toothpaste / Toothbrush
-    "ODOL BESAR": "Atomy Toothpaste 200g",
-    "odol besar": "Atomy Toothpaste 200g",
-    "ODOL KECIL": "Atomy Toothpaste 50g",
-    "ODOL KECIL 50GR": "Atomy Toothpaste 50g",
-    "Odol kecil": "Atomy Toothpaste 50g",
-    "odol kecil": "Atomy Toothpaste 50g",
+    # Toothpaste / Toothbrush — Atomy Indonesia hanya Propolis
+    "ODOL BESAR": "Atomy Propolis Toothpaste 200g",
+    "odol besar": "Atomy Propolis Toothpaste 200g",
+    "ODOL KECIL": "Atomy Propolis Toothpaste 50g",
+    "ODOL KECIL 50GR": "Atomy Propolis Toothpaste 50g",
+    "Odol kecil": "Atomy Propolis Toothpaste 50g",
+    "odol kecil": "Atomy Propolis Toothpaste 50g",
     "SIKAT GIGI": "Atomy Toothbrush",
     "sikat gigi": "Atomy Toothbrush",
     
@@ -319,31 +479,38 @@ PRODUCT_MERGE_MAP = {
     "HYDRA BRIGHTENING CARE SET": "Atomy Hydra Brightening Care Set",
     
     # Healthy Glow
-    "HEALTHY GLOW BASE": "Atomy BB Cream",
-    "healthy glow base": "Atomy BB Cream",
+    "HEALTHY GLOW BASE": "Atomy Healthy Glow Base",
+    "healthy glow base": "Atomy Healthy Glow Base",
     
     # Acne / Scrubber
-    "ACNE CLEAR EXPERT SYSTEM": "Atomy Stainless Steel Scrubber",
+    "ACNE CLEAR EXPERT SYSTEM": "Atomy Acne Clear Expert System",
     "acne scratch free scruber": "Atomy Stainless Steel Scrubber",
     
     # Baby
-    "CARABEBE LOTION": "Atomy Baby Lotion",
+    "CARABEBE LOTION": "Atomy Cerabebe Baby Lotion",
     
-    # Misc to product (best guess)
-    "FINEZYME": "Atomy Probiotics 10+",  # probiotic enzyme
-    "PSYLIUM HUSK": "Atomy Slim Body Shake 2.0",
-    "KOYO": "Atomy Travel Kit",  # placeholder
-    "koyo": "Atomy Travel Kit",
+    # Finezyme — produk sendiri, bukan probiotic
+    "FINEZYME": "Atomy Finezyme",
+    "Finezyme": "Atomy Finezyme",
+    "finezyme": "Atomy Finezyme",
     
-    # Paket Ramadhan
-    "PAKET RAMADHAN": "Atomy Paket Ramadhan Care",
-    "PAKET RAMADHAN 1": "Atomy Paket Berkah Ramadan A",
-    "PAKET RAMDHAN 1": "Atomy Paket Berkah Ramadan A",
-    "RAMADHAN 1": "Atomy Paket Berkah Ramadan A",
-    "RAMADHAN 2": "Atomy Paket Berkah Ramadan B",
-    "RAMDHAN 1": "Atomy Paket Berkah Ramadan A",
-    "Ramadhan 1": "Atomy Paket Berkah Ramadan A",
-    "ramadhan 1": "Atomy Paket Berkah Ramadan A",
+    # Spirulina, Psyllium Husk
+    "PSYLIUM HUSK": "Atomy Psyllium Husk",
+    "PSYLLIUM HUSK": "Atomy Psyllium Husk",
+    
+    # Koyo = Atomy Ethereal Oil Patch (per koreksi user)
+    "KOYO": "Atomy Ethereal Oil Patch",
+    "koyo": "Atomy Ethereal Oil Patch",
+    
+    # Paket Ramadhan — semua varian penulisan sama (per koreksi user)
+    "PAKET RAMADHAN": "Atomy Promo Ramadhan 1",
+    "PAKET RAMADHAN 1": "Atomy Promo Ramadhan 1",
+    "PAKET RAMDHAN 1": "Atomy Promo Ramadhan 1",
+    "RAMADHAN 1": "Atomy Promo Ramadhan 1",
+    "RAMADHAN 2": "Atomy Promo Ramadhan 2",
+    "RAMDHAN 1": "Atomy Promo Ramadhan 1",
+    "Ramadhan 1": "Atomy Promo Ramadhan 1",
+    "ramadhan 1": "Atomy Promo Ramadhan 1",
     
     # Lebaran
     "LEBARAN 1": "Atomy Paket Bingkisan Lebaran",
@@ -806,12 +973,47 @@ def search_produk_di_kardus(product_name):
                 })
     return result
 
+def get_master_products():
+    """Get list produk dari Google Sheets sheet 'master_products'.
+    Kalau sheet kosong/belum ada, pakai ATOMY_PRODUCTS_DEFAULT."""
+    try:
+        sh = get_spreadsheet()
+        try:
+            ws = sh.worksheet("master_products")
+        except gspread.WorksheetNotFound:
+            return ATOMY_PRODUCTS_DEFAULT
+        
+        # Ambil kolom A (product_name)
+        records = ws.get_all_values()
+        if len(records) <= 1:  # cuma header
+            return ATOMY_PRODUCTS_DEFAULT
+        
+        # Skip header, ambil semua nama produk yang tidak kosong
+        products = []
+        for row in records[1:]:
+            if row and row[0] and str(row[0]).strip():
+                products.append(str(row[0]).strip())
+        
+        if not products:
+            return ATOMY_PRODUCTS_DEFAULT
+        
+        return sorted(set(products))
+    except Exception:
+        return ATOMY_PRODUCTS_DEFAULT
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_master_products_cached():
+    """Cached version supaya tidak hit Google Sheets terus"""
+    return get_master_products()
+
 def get_filtered_products(search_text=""):
-    """Filter list produk Atomy"""
+    """Filter list produk Atomy berdasarkan search.
+    Sumber: master_products sheet di Google Sheets, atau default kalau belum di-setup."""
+    products = get_master_products_cached()
     if not search_text:
-        return ATOMY_PRODUCTS
+        return products
     s = search_text.lower()
-    return [p for p in ATOMY_PRODUCTS if s in p.lower()]
+    return [p for p in products if s in p.lower()]
 
 def kurangi_stok(kardus_id, product_name, qty_kurangi, performed_by, tipe="KELUAR",
                  buyer="", price=0, transfer_to="", notes=""):
@@ -1390,11 +1592,12 @@ with tab_masuk:
         c_prod, c_qty, c_harga = st.columns([3, 1, 1])
         with c_prod:
             # Streamlit selectbox sudah punya fitur "type to search" built-in!
+            master_products_list = get_master_products_cached()
             new_produk = st.selectbox(
-                "Cari & Pilih Produk Atomy (ketik untuk cari)",
-                [""] + ATOMY_PRODUCTS,
+                f"Cari & Pilih Produk Atomy (total: {len(master_products_list)} produk, ketik untuk cari)",
+                [""] + master_products_list,
                 key="bm_new_produk",
-                help="Ketik beberapa huruf untuk cari, contoh: 'h' → muncul HemoHim, Hongsamdan, dll"
+                help="Ketik beberapa huruf untuk cari, contoh: 'h' → muncul HemoHim, Hongsamdan, dll. List ini bisa diedit di Google Sheets sheet 'master_products'."
             )
         with c_qty:
             new_qty = st.number_input("Qty", min_value=1, value=1, key="bm_new_qty")
@@ -1987,6 +2190,121 @@ with tab_setting:
                     st.error(msg)
     
     with pg2:
+        st.markdown("#### 📋 Master Produk (Google Sheets)")
+        st.caption("Daftar produk dropdown bisa kamu maintain langsung di Google Sheets. "
+                   "Edit/tambah produk Atomy baru kapan saja tanpa perlu ubah kode!")
+        
+        # Show current master products count
+        master_list = get_master_products_cached()
+        is_using_default = (master_list == ATOMY_PRODUCTS_DEFAULT)
+        
+        if is_using_default:
+            st.warning(f"⚠️ Belum ada sheet 'master_products' di Google Sheets. "
+                       f"Aplikasi pakai default list ({len(ATOMY_PRODUCTS_DEFAULT)} produk).")
+            st.info("💡 Klik tombol di bawah untuk membuat sheet 'master_products' otomatis "
+                    "dengan list default. Setelah itu kamu bisa edit langsung di Google Sheets.")
+        else:
+            st.success(f"✅ Sheet 'master_products' aktif dengan **{len(master_list)} produk**.")
+            with st.expander("Lihat 20 produk pertama"):
+                for p in master_list[:20]:
+                    st.markdown(f"- {p}")
+                if len(master_list) > 20:
+                    st.caption(f"... dan {len(master_list)-20} produk lainnya")
+        
+        col_init, col_refresh = st.columns(2)
+        with col_init:
+            if st.button("📋  Buat / Reset Sheet 'master_products'", use_container_width=True,
+                         key="btn_init_master"):
+                try:
+                    sh = get_spreadsheet()
+                    try:
+                        ws = sh.worksheet("master_products")
+                        ws.clear()
+                    except gspread.WorksheetNotFound:
+                        ws = sh.add_worksheet(title="master_products", rows=500, cols=3)
+                    
+                    # Header
+                    ws.append_row(["product_name", "category", "notes"])
+                    
+                    # Categorize default products
+                    rows_to_add = []
+                    for p in ATOMY_PRODUCTS_DEFAULT:
+                        cat = "Lainnya"
+                        pl = p.lower()
+                        if "hemohim" in pl:
+                            cat = "HemoHim"
+                        elif any(k in pl for k in ["vitamin", "probiotic", "omega", "spirulina",
+                                                     "hongsamdan", "ginseng", "milk thistle",
+                                                     "lutein", "calcium", "iron", "collagen",
+                                                     "phenon", "psyllium", "bird", "tiger",
+                                                     "memory", "saw palmetto", "sophora",
+                                                     "balance life", "banaba", "noni", "propolis",
+                                                     "pomegranate", "finezyme", "vita-energy"]):
+                            cat = "Health & Suplemen"
+                        elif any(k in pl for k in ["absolute", "fame", "evening care", "hydra",
+                                                     "skincare", "cleanser", "toner", "ampoule",
+                                                     "serum", "essence", "cream", "lotion",
+                                                     "sunscreen", "sun stick", "homme", "men ",
+                                                     "gel mask", "expert", "cica", "rose", "mist",
+                                                     "cleansing", "synergy", "marine"]):
+                            cat = "Beauty - Skincare"
+                        elif any(k in pl for k in ["bb cream", "lip", "adelica", "mascara",
+                                                     "glow base", "mineral pact"]):
+                            cat = "Beauty - Make Up"
+                        elif any(k in pl for k in ["hair", "shampoo", "conditioner", "scalp",
+                                                     "saengmodan"]):
+                            cat = "Hair Care"
+                        elif any(k in pl for k in ["body", "hand soap", "hand cream", "aidam",
+                                                     "herb day", "feminine"]):
+                            cat = "Body Care"
+                        elif any(k in pl for k in ["baby", "cerabebe", "kids"]):
+                            cat = "Baby & Kids"
+                        elif any(k in pl for k in ["toothpaste", "toothbrush", "oral"]):
+                            cat = "Oral Care"
+                        elif any(k in pl for k in ["detergent", "fabric", "softener", "dish",
+                                                     "kitchen", "scrubber", "wok", "mask"]):
+                            cat = "Home / Living"
+                        elif any(k in pl for k in ["cafe", "tea", "ramen", "laver", "olive",
+                                                     "avocado", "pepper", "chia", "salt",
+                                                     "oatmeal", "coconut"]):
+                            cat = "Food & Beverage"
+                        elif any(k in pl for k in ["paket", "promo", "hampers", "parcel",
+                                                     "gift set", "travel kit", "shopping bag"]):
+                            cat = "Paket / Hampers"
+                        rows_to_add.append([p, cat, ""])
+                    
+                    ws.append_rows(rows_to_add)
+                    
+                    # Clear cache
+                    get_master_products_cached.clear()
+                    
+                    st.success(f"✅ Sheet 'master_products' berhasil dibuat dengan "
+                               f"{len(ATOMY_PRODUCTS_DEFAULT)} produk! "
+                               f"Buka Google Sheets untuk edit/tambah produk.")
+                    time.sleep(1.5)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Error: {e}")
+        
+        with col_refresh:
+            if st.button("🔄  Refresh List Produk", use_container_width=True, key="btn_refresh_master"):
+                get_master_products_cached.clear()
+                st.success("✅ List produk di-refresh!")
+                time.sleep(0.5)
+                st.rerun()
+        
+        st.markdown("""
+        <div style="background:#fff3e0; border-left:4px solid #FB8C00; padding:12px 16px;
+                    border-radius:8px; margin-top:12px;">
+        <b>💡 Cara Tambah/Edit Produk:</b><br>
+        1. Buka Google Sheets &raquo; sheet <code>master_products</code><br>
+        2. Tambah baris baru di kolom <b>product_name</b><br>
+        3. Klik <b>Refresh List Produk</b> di atas, atau tunggu 5 menit (auto refresh)<br>
+        4. Produk baru langsung muncul di dropdown!
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("---")
         st.markdown("#### 🧹 Tool Merge Produk")
         st.caption("Gabungkan nama produk yang typo/inkonsisten ke nama Atomy resmi. "
                    "Misal: 'hemohim', 'HEMOHIM', 'Hemohim' → semuanya jadi 'Atomy HemoHim'.")
