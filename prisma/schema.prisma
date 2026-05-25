@@ -1,0 +1,173 @@
+// SJE POS - Prisma Schema (SQLite)
+// Toko elektronik dengan model konsinyasi/titip jual.
+// Catatan: semua nominal uang disimpan sebagai Int (rupiah bulat) untuk menghindari error floating point.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// SQLite tidak mendukung enum native. Nilai enum disimpan sebagai String
+// dan divalidasi di layer aplikasi (zod). Konvensi nilai:
+//   SalesChannel : OFFLINE | SHOPEE | TOKOPEDIA | TIKTOK
+//   PaymentMethod: CASH | TRANSFER | QRIS | SHOPEE | TOKOPEDIA | TIKTOK | OTHER
+//   ProductStatus: ACTIVE | INACTIVE
+//   PaymentStatus: PAID
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  auditLogs AuditLog[]
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  address   String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products         Product[]         @relation("DefaultSupplier")
+  stockEntries     StockEntry[]
+  saleItems        SaleItem[]
+  supplierPayments SupplierPayment[]
+}
+
+model Product {
+  id                String   @id @default(cuid())
+  sku               String   @unique
+  name              String
+  category          String?
+  brand             String?
+  model             String?
+  defaultSupplierId String?
+  costPrice         Int      @default(0)
+  sellPrice         Int      @default(0)
+  stock             Int      @default(0)
+  status            String   @default("ACTIVE")
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  defaultSupplier Supplier?    @relation("DefaultSupplier", fields: [defaultSupplierId], references: [id])
+  stockEntries    StockEntry[]
+  saleItems       SaleItem[]
+
+  @@index([name])
+  @@index([status])
+}
+
+model StockEntry {
+  id               String   @id @default(cuid())
+  date             DateTime @default(now())
+  supplierId       String
+  productId        String
+  qty              Int
+  costPricePerUnit Int
+  totalCost        Int
+  refNo            String?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@index([date])
+  @@index([supplierId])
+  @@index([productId])
+}
+
+model Sale {
+  id            String   @id @default(cuid())
+  invoiceNo     String   @unique
+  date          DateTime @default(now())
+  channel       String
+  customerName  String?
+  customerPhone String?
+  paymentMethod String
+  paymentStatus String   @default("PAID")
+  subtotal      Int      @default(0)
+  discountTotal Int      @default(0)
+  grandTotal    Int      @default(0)
+  totalCost     Int      @default(0)
+  grossProfit   Int      @default(0)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  items SaleItem[]
+
+  @@index([date])
+  @@index([channel])
+  @@index([paymentMethod])
+}
+
+model SaleItem {
+  id                  String   @id @default(cuid())
+  saleId              String
+  productId           String
+  supplierId          String
+  productNameSnapshot String
+  skuSnapshot         String
+  qty                 Int
+  costPriceSnapshot   Int
+  sellPriceActual     Int
+  discountItem        Int      @default(0)
+  subtotalItem        Int
+  totalCostItem       Int
+  grossProfitItem     Int
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  sale     Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id])
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
+  @@index([supplierId])
+}
+
+model SupplierPayment {
+  id            String   @id @default(cuid())
+  date          DateTime @default(now())
+  supplierId    String
+  amount        Int
+  paymentMethod String
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+
+  @@index([supplierId])
+  @@index([date])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  action      String
+  entityType  String
+  entityId    String?
+  description String
+  metadata    String?
+  createdAt   DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entityType])
+  @@index([createdAt])
+}
