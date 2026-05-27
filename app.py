@@ -764,7 +764,10 @@ def update_row(table_name, row_id, updates):
             
             def _do():
                 ws = get_worksheet(table_name)
-                ws.update(f"A{row_num}:{chr(65+len(headers)-1)}{row_num}", [updated_values])
+                last_col = chr(65 + len(headers) - 1)
+                range_name = f"A{row_num}:{last_col}{row_num}"
+                # gspread v6+ butuh keyword arguments
+                ws.update(values=[updated_values], range_name=range_name)
             _retry_on_rate_limit(_do)
             clear_cache()
             return True
