@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "atomy-landing",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "/Users/michaelcung8/Documents/ATOMY/LANDING PAGE ATOMY/atomy-trust-funnel", "-p", "8181", "--no-clipboard"],
+      "port": 8181
+    }
+  ]
+}
